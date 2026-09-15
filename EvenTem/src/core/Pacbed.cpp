@@ -17,15 +17,31 @@
 void Pacbed::run(){
     py::gil_scoped_release release;
     reset();
+
+    if (decluster)
+    {
+        if (camera != CAMERA::CHEETAH && camera != CAMERA::CHEETAH_PIXELTRIG)
+            throw std::runtime_error("Pacbed decluster=True is currently only supported for .tpx3 (CHEETAH) files.");
+        // electron_count_lut_file (a saved 2D map, see ClusterResolver.hpp) is an
+        // alternative to tot_per_electron's single ToT/ratio formula -- loading it
+        // here means electron_count_lut is populated before the tot_per_electron
+        // check below, so a run relying solely on the map (tot_per_electron left at
+        // its default 0.0) is not rejected.
+        if (!electron_count_lut_file.empty())
+            electron_count_lut = load_electron_count_lut_file(electron_count_lut_file);
+        if (tot_per_electron <= 0.0 && electron_count_lut.empty())
+            throw std::invalid_argument("Pacbed.tot_per_electron must be set (calibrated from your own cluster ToT-sum histogram), or electron_count_lut_file/electron_count_lut must be set, before enabling decluster=True.");
+    }
+
      // Run camera dependent pipeline
     switch (camera)
     {
         case CAMERA::ADVAPIX:
-        {   
+        {
         using namespace ADVAPIX_ADDITIONAL;
         ADVAPIX<EVENT, BUFFER_SIZE, N_BUFFER> cam(
-            nx, 
-            ny,  
+            nx,
+            ny,
             dt,
             &b_cumulative,
             rep,
@@ -35,7 +51,8 @@ void Pacbed::run(){
             file_path,
             socket
         );
-        cam.enable_Pacbed(&Pacbed_image);
+        if (use_mask) cam.enable_Pacbed_mask(&scan_mask, &Pacbed_image);
+        else cam.enable_Pacbed(&Pacbed_image);
         cam.run();
         process_data();
         cam.terminate();
@@ -45,8 +62,8 @@ void Pacbed::run(){
     {
         using namespace CHEETAH_ADDITIONAL;
         CHEETAH<EVENT, BUFFER_SIZE, N_BUFFER> cam(
-            nx, 
-            ny, 
+            nx,
+            ny,
             dt,
             &b_cumulative,
             rep,
@@ -56,7 +73,16 @@ void Pacbed::run(){
             file_path,
             socket
         );
-        cam.enable_Pacbed(&Pacbed_image);
+        if (decluster)
+        {
+            cam.enable_Pacbed_declustered(dtime,dspace,cluster_range,tot_per_electron,
+                &Pacbed_image, n_threads,
+                &clustersize_histogram,&energy_histogram,&clustersize_tot_histogram,
+                electron_count_lut.empty() ? nullptr : &electron_count_lut,
+                use_mask ? &scan_mask : nullptr);
+        }
+        else if (use_mask) cam.enable_Pacbed_mask(&scan_mask, &Pacbed_image);
+        else cam.enable_Pacbed(&Pacbed_image);
         cam.run();
         process_data();
         cam.terminate();
@@ -66,8 +92,8 @@ void Pacbed::run(){
     {
         using namespace ELECTRON_ADDITIONAL;
         ELECTRON<EVENT, BUFFER_SIZE, N_BUFFER> cam(
-            nx, 
-            ny, 
+            nx,
+            ny,
             n_cam,
             &b_cumulative,
             rep,
@@ -77,7 +103,8 @@ void Pacbed::run(){
             file_path,
             socket
         );
-        cam.enable_Pacbed(&Pacbed_image);
+        if (use_mask) cam.enable_Pacbed_mask(&scan_mask, &Pacbed_image);
+        else cam.enable_Pacbed(&Pacbed_image);
         cam.run();
         process_data();
         cam.terminate();
@@ -87,8 +114,8 @@ void Pacbed::run(){
     {
         using namespace CHEETAH_ADDITIONAL;
         CHEETAH_pixeltrig<EVENT, BUFFER_SIZE, N_BUFFER> cam(
-            nx, 
-            ny, 
+            nx,
+            ny,
             &b_cumulative,
             rep,
             processor_line,
@@ -98,7 +125,16 @@ void Pacbed::run(){
             socket,
             pattern_file
         );
-        cam.enable_Pacbed(&Pacbed_image);
+        if (decluster)
+        {
+            cam.enable_Pacbed_declustered(dtime,dspace,cluster_range,tot_per_electron,
+                &Pacbed_image, n_threads,
+                &clustersize_histogram,&energy_histogram,&clustersize_tot_histogram,
+                electron_count_lut.empty() ? nullptr : &electron_count_lut,
+                use_mask ? &scan_mask : nullptr);
+        }
+        else if (use_mask) cam.enable_Pacbed_mask(&scan_mask, &Pacbed_image);
+        else cam.enable_Pacbed(&Pacbed_image);
         cam.run();
         process_data();
         cam.terminate();
@@ -448,6 +484,11 @@ void Pacbed::line_processor(
         idxx = (int)(prog_mon->fr_count) % nxy;
         *prog_mon += nx;
 
+        // Mirrors Roi/vSTEM/Var/FourD's identical copy -- see Roi.cpp's line_processor
+        // for why (raw C++ console output doesn't reliably reach Jupyter; this lets
+        // Python poll `.progress` from another thread instead).
+        progress_percent = prog_mon->progress_percent;
+
         int update_line = idxx / nx;
         if ((prog_mon->report_set) && (update_line)>0)
         {
@@ -482,3 +523,12 @@ void Pacbed::line_processor(
     }
 
 }
+
+void Pacbed::set_scan_mask(py::array_t<int> array){
+    py::buffer_info buf_info = array.request();
+    if (buf_info.ndim != 1) throw std::runtime_error("Input should be a 1-D array");
+    int* data_ptr = static_cast<int*>(buf_info.ptr);
+    size_t size = buf_info.size;
+    scan_mask = std::vector<int>(data_ptr, data_ptr + size);
+    use_mask = true;
+};

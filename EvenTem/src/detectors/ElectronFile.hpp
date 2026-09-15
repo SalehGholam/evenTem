@@ -141,6 +141,9 @@ private:
             case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::pacbed:
                 this->pacbed((uint64_t)(packet->ry * this->ny + packet->rx), packet->kx, packet->ky, packet->id_image);
                 break;
+            case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::pacbed_mask:
+                this->pacbed_mask((uint64_t)(packet->ry * this->ny + packet->rx), packet->kx, packet->ky, packet->id_image);
+                break;
             case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::var:
                 this->var((uint64_t)(packet->ry * this->ny + packet->rx), packet->kx, packet->ky, packet->id_image);
                 break;

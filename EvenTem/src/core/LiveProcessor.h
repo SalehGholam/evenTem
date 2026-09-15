@@ -121,6 +121,16 @@ public:
     int dt;
     int rep;
     int fr_total;
+    // Multi-process file-splitting (CHEETAH/.tpx3 only -- see vSTEM's
+    // file_byte_offset/line_number_offset/stop_at_line and Cheetah.hpp). A
+    // worker whose real scan lines start partway through the full image
+    // (line_number_offset > 0) needs process_data()'s own progress counter
+    // seeded to match -- otherwise it starts comparing against
+    // *preprocessor_line (which reflects the real, absolute starting line)
+    // from 0, hopelessly out of sync, and either copies the wrong rows or never
+    // reaches "done". Default 0 reproduces the exact old whole-file behavior
+    // for every mode that doesn't set it.
+    size_t fr_count_seed = 0;
     int *processor_line = new int;
     int *preprocessor_line  = new int;
     int id_image;

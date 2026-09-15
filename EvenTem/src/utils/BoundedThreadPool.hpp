@@ -29,10 +29,25 @@ private:
     std::vector<std::thread> threads;
     std::queue<std::function<void()>> tasks;
     std::atomic<bool> b_running;
-    std::mutex mtx_queue_full;
-    std::mutex mtx_queue_empty;
-    std::condition_variable cnd_buffer_full;
-    std::condition_variable cnd_buffer_empty;
+    // A single mutex protects `tasks` (and `busy_workers` below) for both producers
+    // (push_task) and consumers (worker/execute_task). The previous version used two
+    // *separate* mutexes -- one for "queue full" waits, one for "queue empty" waits
+    // -- guarding the same std::queue from both push and pop/front sides. That's a
+    // genuine data race: a push (under mtx_queue_full) and a pop/front-access (under
+    // mtx_queue_empty) could run concurrently on the same underlying queue. It went
+    // unnoticed because nothing in this codebase actually ran the pool with more than
+    // one worker thread before; enabling real multi-threaded declustering (n_threads
+    // > 1) triggered it immediately (observed as a stray "bad function call" --
+    // std::bad_function_call from a worker dequeuing a corrupted/empty task, and
+    // duplicated startup log lines). One mutex for the whole queue is the standard,
+    // correct pattern for a bounded blocking queue with multiple producers/consumers.
+    std::mutex mtx;
+    std::condition_variable cnd_not_full;
+    std::condition_variable cnd_not_empty;
+    // Counts workers currently executing a task (i.e. dequeued but not yet finished).
+    // wait_for_completion() needs this: an empty queue does NOT mean all work is
+    // done if a worker just dequeued its last task and hasn't returned from it yet.
+    int busy_workers = 0;
 
     void create_threads()
     {
@@ -43,38 +58,38 @@ private:
         std::cout << "Created " << n_threads << " threads." << std::endl;
     }
 
-    inline void execute_task(std::unique_lock<std::mutex> *lock)
-    {
-        std::function<void()> task = std::move(tasks.front());
-        tasks.pop();
-        cnd_buffer_full.notify_one();
-        lock->unlock();
-        task();
-        lock->lock();
-    }
-    inline void wait_for_task()
-    {
-        std::unique_lock<std::mutex> lock(mtx_queue_empty);
-        cnd_buffer_empty.wait(lock, [this]
-                              { return !tasks.empty() || !b_running; });
-        if (!tasks.empty())
-        {
-            execute_task(&lock);
-        }
-    }
-
     void worker()
     {
-        while (b_running)
+        while (true)
         {
+            std::function<void()> task;
+            {
+                std::unique_lock<std::mutex> lock(mtx);
+                cnd_not_empty.wait(lock, [this]
+                                   { return !tasks.empty() || !b_running; });
+                if (tasks.empty())
+                {
+                    // Only reachable via !b_running (shutdown) with nothing left to do.
+                    return;
+                }
+                task = std::move(tasks.front());
+                tasks.pop();
+                ++busy_workers;
+            }
+            cnd_not_full.notify_one();
             try
             {
-                wait_for_task();
+                task();
             }
             catch (const std::exception &e)
             {
                 std::cerr << e.what() << std::endl;
             }
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                --busy_workers;
+            }
+            cnd_not_full.notify_one();
         }
     }
 
@@ -85,11 +100,13 @@ public:
     template <typename T>
     inline void push_task(const T &task)
     {
-        std::unique_lock<std::mutex> lock(mtx_queue_full);
-        cnd_buffer_full.wait(lock, [this]
+        {
+            std::unique_lock<std::mutex> lock(mtx);
+            cnd_not_full.wait(lock, [this]
                              { return ((int)tasks.size() < limit); });
-        tasks.push(std::function<void()>(task));
-        cnd_buffer_empty.notify_one();
+            tasks.push(std::function<void()>(task));
+        }
+        cnd_not_empty.notify_one();
     }
 
     template <typename T, typename... A>
@@ -101,9 +118,9 @@ public:
 
     void wait_for_completion()
     {
-        std::unique_lock<std::mutex> lock(mtx_queue_full);
-        cnd_buffer_full.wait(lock, [this]
-                             { return tasks.empty(); });
+        std::unique_lock<std::mutex> lock(mtx);
+        cnd_not_full.wait(lock, [this]
+                         { return tasks.empty() && busy_workers == 0; });
     }
 
     void join_threads()
@@ -145,8 +162,11 @@ public:
     ~BoundedThreadPool()
     {
         wait_for_completion();
-        b_running = false;
-        cnd_buffer_empty.notify_all();
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            b_running = false;
+        }
+        cnd_not_empty.notify_all();
         join_threads();
     }
 };

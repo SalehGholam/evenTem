@@ -141,7 +141,138 @@ class Pacbed(eventem.Pacbed):
         I = self.image.astype(float).flatten()
         COM = np.array([np.sum(X*I)/np.sum(I), np.sum(Y*I)/np.sum(I)])
         return COM
-        
+
+    @property
+    def Decluster(self):
+        """
+        bool : charge-weighted, declustered PACBED (CHEETAH/.tpx3 only). Off by
+        default -- when False, behavior is unchanged from before this feature
+        existed.
+        """
+        return super().decluster
+
+    @Decluster.setter
+    def Decluster(self, value):
+        self.decluster = value
+
+    @property
+    def Dtime(self):
+        """
+        int : declustering time window (same meaning/default as Roi.Dtime)
+        """
+        return super().dtime
+
+    @Dtime.setter
+    def Dtime(self, value):
+        self.dtime = value
+
+    @property
+    def Dspace(self):
+        """
+        int : declustering space window (same meaning/default as Roi.Dspace)
+        """
+        return super().dspace
+
+    @Dspace.setter
+    def Dspace(self, value):
+        self.dspace = value
+
+    @property
+    def ClusterRange(self):
+        """
+        int : declustering search range (same meaning/default as Roi.ClusterRange)
+        """
+        return super().cluster_range
+
+    @ClusterRange.setter
+    def ClusterRange(self, value):
+        self.cluster_range = value
+
+    @property
+    def TotPerElectron(self):
+        """
+        float : calibration constant (typical single-electron cluster ToT-sum) used
+        to resolve each cluster's electron count when Decluster=True. No safe default
+        -- must be set from your own cluster ToT-sum histogram (e.g. Roi's, if
+        acquired under the same beam/detector conditions).
+        """
+        return super().tot_per_electron
+
+    @TotPerElectron.setter
+    def TotPerElectron(self, value):
+        self.tot_per_electron = value
+
+    @property
+    def ElectronCountLut(self):
+        """
+        2D nested list/array of int : alternative to TotPerElectron -- resolves each
+        cluster's electron count from a (cluster size, ToT) map instead of a single
+        ToT/TotPerElectron ratio. Row = cluster size, column = ToT, matching
+        ClustersizeTotHistogram's own layout. Empty by default (TotPerElectron stays
+        the default resolver); set directly, or set ElectronCountLutFile to load a
+        saved template instead. Both options remain available side by side.
+        """
+        return np.array(super().electron_count_lut)
+
+    @ElectronCountLut.setter
+    def ElectronCountLut(self, value):
+        self.electron_count_lut = value
+
+    @property
+    def ElectronCountLutFile(self):
+        """
+        str : path to a plain-text electron-count template file (see
+        ElectronCountLut) -- loaded into ElectronCountLut at the start of Run() if
+        non-empty. A reusable calibration artifact: valid for reuse as long as the
+        beam energy / detector setup it was built from hasn't changed. Empty by
+        default (feature off).
+        """
+        return super().electron_count_lut_file
+
+    @ElectronCountLutFile.setter
+    def ElectronCountLutFile(self, value):
+        self.electron_count_lut_file = value
+
+    @property
+    def ClustersizeHistogram(self):
+        """
+        1D numpy array : histogram of resolved cluster sizes, from the most recent
+        declustered Run().
+        """
+        return np.array(super().clustersize_histogram)
+
+    @property
+    def EnergyHistogram(self):
+        """
+        1D numpy array : histogram of resolved clusters' total summed ToT, from the
+        most recent declustered Run().
+        """
+        return np.array(super().energy_histogram)
+
+    @property
+    def ClustersizeTotHistogram(self):
+        """
+        2D numpy array, shape (50, 4096) : joint histogram of resolved cluster size
+        (rows) vs. total summed ToT (columns), from the most recent declustered Run().
+        """
+        return np.array(super().clustersize_tot_histogram)
+
+    def SetScanMask(self, mask):
+        """
+        Restrict PACBED accumulation to scan positions selected by a mask (e.g. a
+        segmented particle/vacuum shape), instead of the whole scan. Works with or
+        without Decluster=True -- when both are set, a cluster's SEED hit position
+        decides whether it counts.
+
+        Parameters
+        ----------
+        mask : 2D array-like of int, shape (ny, nx), or a flat nx*ny 1D array
+            Nonzero = included. Row-major, index = ry*nx+rx (no y-flip) -- same
+            scan-grid convention as everything else in this file (see set_offsets,
+            image reshaping elsewhere).
+        """
+        flat = np.asarray(mask, dtype=np.int32).reshape(-1)
+        super().set_scan_mask(flat)
 
 
 class vSTEM(eventem.vSTEM):
@@ -328,7 +459,122 @@ class vSTEM(eventem.vSTEM):
         3D numpy array : reconstructed image stack [nx,ny,repetitions]
         """
         return np.array(super().vSTEM_stack).reshape(super().repetitions+1,super().ny,super().nx)[:-1,:,:]
-    
+
+    @property
+    def Decluster(self):
+        """
+        bool : charge-weighted, declustered dose counting (CHEETAH/.tpx3 only,
+        single-annulus detector only). Off by default -- when False, behavior is
+        unchanged from before this feature existed.
+        """
+        return super().decluster
+
+    @Decluster.setter
+    def Decluster(self, value):
+        self.decluster = value
+
+    @property
+    def Dtime(self):
+        """
+        int : declustering time window (same meaning/default as Roi.Dtime)
+        """
+        return super().dtime
+
+    @Dtime.setter
+    def Dtime(self, value):
+        self.dtime = value
+
+    @property
+    def Dspace(self):
+        """
+        int : declustering space window (same meaning/default as Roi.Dspace)
+        """
+        return super().dspace
+
+    @Dspace.setter
+    def Dspace(self, value):
+        self.dspace = value
+
+    @property
+    def ClusterRange(self):
+        """
+        int : declustering search range (same meaning/default as Roi.ClusterRange)
+        """
+        return super().cluster_range
+
+    @ClusterRange.setter
+    def ClusterRange(self, value):
+        self.cluster_range = value
+
+    @property
+    def TotPerElectron(self):
+        """
+        float : calibration constant (typical single-electron cluster ToT-sum) used
+        to resolve each cluster's electron count when Decluster=True. No safe default
+        -- must be set from your own cluster ToT-sum histogram (e.g. Roi's, if
+        acquired under the same beam/detector conditions).
+        """
+        return super().tot_per_electron
+
+    @TotPerElectron.setter
+    def TotPerElectron(self, value):
+        self.tot_per_electron = value
+
+    @property
+    def ElectronCountLut(self):
+        """
+        2D nested list/array of int : alternative to TotPerElectron -- resolves each
+        cluster's electron count from a (cluster size, ToT) map instead of a single
+        ToT/TotPerElectron ratio. Row = cluster size, column = ToT, matching
+        ClustersizeTotHistogram's own layout. Empty by default (TotPerElectron stays
+        the default resolver); set directly, or set ElectronCountLutFile to load a
+        saved template instead. Both options remain available side by side.
+        """
+        return np.array(super().electron_count_lut)
+
+    @ElectronCountLut.setter
+    def ElectronCountLut(self, value):
+        self.electron_count_lut = value
+
+    @property
+    def ElectronCountLutFile(self):
+        """
+        str : path to a plain-text electron-count template file (see
+        ElectronCountLut) -- loaded into ElectronCountLut at the start of Run() if
+        non-empty. A reusable calibration artifact: valid for reuse as long as the
+        beam energy / detector setup it was built from hasn't changed. Empty by
+        default (feature off).
+        """
+        return super().electron_count_lut_file
+
+    @ElectronCountLutFile.setter
+    def ElectronCountLutFile(self, value):
+        self.electron_count_lut_file = value
+
+    @property
+    def ClustersizeHistogram(self):
+        """
+        1D numpy array : histogram of resolved cluster sizes, from the most recent
+        declustered Run().
+        """
+        return np.array(super().clustersize_histogram)
+
+    @property
+    def EnergyHistogram(self):
+        """
+        1D numpy array : histogram of resolved clusters' total summed ToT, from the
+        most recent declustered Run().
+        """
+        return np.array(super().energy_histogram)
+
+    @property
+    def ClustersizeTotHistogram(self):
+        """
+        2D numpy array, shape (50, 4096) : joint histogram of resolved cluster size
+        (rows) vs. total summed ToT (columns), from the most recent declustered Run().
+        """
+        return np.array(super().clustersize_tot_histogram)
+
     def PlotImage(self):
         """
         Plot the reconstructed image
@@ -468,7 +714,122 @@ class Var(eventem.Var):
         int : outer radius of the annular detector
         """
         self.outer_radius = value
-    
+
+    @property
+    def Decluster(self):
+        """
+        bool : charge-weighted, declustered variance imaging (CHEETAH/.tpx3 only).
+        Off by default -- when False, behavior is unchanged from before this feature
+        existed.
+        """
+        return super().decluster
+
+    @Decluster.setter
+    def Decluster(self, value):
+        self.decluster = value
+
+    @property
+    def Dtime(self):
+        """
+        int : declustering time window (same meaning/default as Roi.Dtime)
+        """
+        return super().dtime
+
+    @Dtime.setter
+    def Dtime(self, value):
+        self.dtime = value
+
+    @property
+    def Dspace(self):
+        """
+        int : declustering space window (same meaning/default as Roi.Dspace)
+        """
+        return super().dspace
+
+    @Dspace.setter
+    def Dspace(self, value):
+        self.dspace = value
+
+    @property
+    def ClusterRange(self):
+        """
+        int : declustering search range (same meaning/default as Roi.ClusterRange)
+        """
+        return super().cluster_range
+
+    @ClusterRange.setter
+    def ClusterRange(self, value):
+        self.cluster_range = value
+
+    @property
+    def TotPerElectron(self):
+        """
+        float : calibration constant (typical single-electron cluster ToT-sum) used
+        to resolve each cluster's electron count when Decluster=True. No safe default
+        -- must be set from your own cluster ToT-sum histogram (e.g. Roi's, if
+        acquired under the same beam/detector conditions).
+        """
+        return super().tot_per_electron
+
+    @TotPerElectron.setter
+    def TotPerElectron(self, value):
+        self.tot_per_electron = value
+
+    @property
+    def ElectronCountLut(self):
+        """
+        2D nested list/array of int : alternative to TotPerElectron -- resolves each
+        cluster's electron count from a (cluster size, ToT) map instead of a single
+        ToT/TotPerElectron ratio. Row = cluster size, column = ToT, matching
+        ClustersizeTotHistogram's own layout. Empty by default (TotPerElectron stays
+        the default resolver); set directly, or set ElectronCountLutFile to load a
+        saved template instead. Both options remain available side by side.
+        """
+        return np.array(super().electron_count_lut)
+
+    @ElectronCountLut.setter
+    def ElectronCountLut(self, value):
+        self.electron_count_lut = value
+
+    @property
+    def ElectronCountLutFile(self):
+        """
+        str : path to a plain-text electron-count template file (see
+        ElectronCountLut) -- loaded into ElectronCountLut at the start of Run() if
+        non-empty. A reusable calibration artifact: valid for reuse as long as the
+        beam energy / detector setup it was built from hasn't changed. Empty by
+        default (feature off).
+        """
+        return super().electron_count_lut_file
+
+    @ElectronCountLutFile.setter
+    def ElectronCountLutFile(self, value):
+        self.electron_count_lut_file = value
+
+    @property
+    def ClustersizeHistogram(self):
+        """
+        1D numpy array : histogram of resolved cluster sizes, from the most recent
+        declustered Run().
+        """
+        return np.array(super().clustersize_histogram)
+
+    @property
+    def EnergyHistogram(self):
+        """
+        1D numpy array : histogram of resolved clusters' total summed ToT, from the
+        most recent declustered Run().
+        """
+        return np.array(super().energy_histogram)
+
+    @property
+    def ClustersizeTotHistogram(self):
+        """
+        2D numpy array, shape (50, 4096) : joint histogram of resolved cluster size
+        (rows) vs. total summed ToT (columns), from the most recent declustered Run().
+        """
+        return np.array(super().clustersize_tot_histogram)
+
     def PlotImage(self):
         """
         Plot the reconstructed image
@@ -476,7 +837,7 @@ class Var(eventem.Var):
         fig, ax = plt.subplots(1,1,figsize=(10,10))
         ax.imshow(self.image,cmap='gray')
         ax.axis('off')
-        
+
 
 class Ricom(eventem.Ricom):
     """
@@ -1016,10 +1377,141 @@ class Roi(eventem.Roi):
         int : detector bin
         """
         return super().det_bin
-    
+
     @DetectorBin.setter
     def DetectorBin(self, value):
         self.det_bin = value
+
+    @property
+    def Decluster(self):
+        """
+        bool : if True, group raw pixel activations into physical-electron clusters
+        (same windowed dspace/dtime/cluster_range grouping as the Electron processor)
+        before counting into the ROI outputs, crediting each cluster's ToT-weighted
+        centroid with the number of electrons resolved from its total charge (see
+        TotPerElectron). Currently only supported for .tpx3 (CHEETAH) files. Off by
+        default, in which case every raw pixel activation is counted as one electron,
+        same as before this option existed.
+        """
+        return super().decluster
+
+    @Decluster.setter
+    def Decluster(self, value):
+        self.decluster = value
+
+    @property
+    def Dtime(self):
+        """
+        int : maximum time (in ToA clock ticks) between two pixel activations for them
+        to be merged into the same cluster. Only used when Decluster is True.
+        """
+        return super().dtime
+
+    @Dtime.setter
+    def Dtime(self, value):
+        self.dtime = value
+
+    @property
+    def Dspace(self):
+        """
+        int : maximum distance (in pixels, x and y) between two pixel activations for
+        them to be merged into the same cluster. Only used when Decluster is True.
+        """
+        return super().dspace
+
+    @Dspace.setter
+    def Dspace(self, value):
+        self.dspace = value
+
+    @property
+    def ClusterRange(self):
+        """
+        int : how many subsequent raw hits are checked as merge candidates for a given
+        cluster seed. Only used when Decluster is True.
+        """
+        return super().cluster_range
+
+    @ClusterRange.setter
+    def ClusterRange(self, value):
+        self.cluster_range = value
+
+    @property
+    def TotPerElectron(self):
+        """
+        float : calibration constant -- the typical total summed ToT (charge) of a
+        single electron's cluster, at your current beam energy / detector threshold
+        setting. Read this off your own cluster (ToT-sum vs. hit-count) histogram --
+        e.g. the ToT-sum value at the center of the "1 electron" band. A cluster's
+        resolved electron count is round(cluster_tot_sum / TotPerElectron); clusters
+        well below this (noise/X-rays) resolve to 0, clusters near 2x/3x/... resolve
+        to genuine multi-electron pile-up. Must be set to a positive value before
+        Decluster can be used -- there is no safe default.
+        """
+        return super().tot_per_electron
+
+    @TotPerElectron.setter
+    def TotPerElectron(self, value):
+        self.tot_per_electron = value
+
+    @property
+    def ElectronCountLut(self):
+        """
+        2D nested list/array of int : alternative to TotPerElectron -- resolves each
+        cluster's electron count from a (cluster size, ToT) map instead of a single
+        ToT/TotPerElectron ratio. Row = cluster size, column = ToT, matching
+        ClustersizeTotHistogram's own layout. Empty by default (TotPerElectron stays
+        the default resolver); set directly, or set ElectronCountLutFile to load a
+        saved template instead. Both options remain available side by side.
+        """
+        return np.array(super().electron_count_lut)
+
+    @ElectronCountLut.setter
+    def ElectronCountLut(self, value):
+        self.electron_count_lut = value
+
+    @property
+    def ElectronCountLutFile(self):
+        """
+        str : path to a plain-text electron-count template file (see
+        ElectronCountLut) -- loaded into ElectronCountLut at the start of Run() if
+        non-empty. A reusable calibration artifact: valid for reuse as long as the
+        beam energy / detector setup it was built from hasn't changed. Empty by
+        default (feature off).
+        """
+        return super().electron_count_lut_file
+
+    @ElectronCountLutFile.setter
+    def ElectronCountLutFile(self, value):
+        self.electron_count_lut_file = value
+
+    @property
+    def ClustersizeHistogram(self):
+        """
+        1D numpy array : histogram of resolved cluster sizes (number of raw pixel hits
+        merged per cluster), from the most recent declustered Run(). Useful for
+        sanity-checking against your own calibration plot.
+        """
+        return np.array(super().clustersize_histogram)
+
+    @property
+    def EnergyHistogram(self):
+        """
+        1D numpy array : histogram of resolved clusters' total summed ToT, from the
+        most recent declustered Run(). Useful for sanity-checking TotPerElectron
+        against your own calibration plot.
+        """
+        return np.array(super().energy_histogram)
+
+    @property
+    def ClustersizeTotHistogram(self):
+        """
+        2D numpy array, shape (50, 4096) : joint histogram of resolved cluster size
+        (rows) vs. total summed ToT (columns), from the most recent declustered Run().
+        This is the "hits vs. summed ToT" 2D calibration plot -- reproduces the kind of
+        plot used to visually pick TotPerElectron by looking for single- vs.
+        multi-electron pile-up bands.
+        """
+        return np.array(super().clustersize_tot_histogram)
 
     def Run(self):
         """
@@ -1029,6 +1521,98 @@ class Roi(eventem.Roi):
             print(f"extracting 4D sub-dataset that requires {self.width*self.height*(self.DetectorSize/self.DetectorBin)**2/1e9:.2f} GB of RAM")
         super().run()
     
+
+
+def make_hyperspy_compatible(src_path, dst_path=None, dataset_key="4D",
+                              nav_axis_names=("y", "x"), sig_axis_names=("ky", "kx")):
+    """
+    Converts a FourD-written HDF5 file (run with `SaveMetadata = False`, so it
+    contains only a top-level `dataset_key` 4D array and nothing else) into a file
+    that loads directly via `hyperspy.api.load(path, lazy=True)` -- no extra
+    kwargs, no reader ambiguity.
+
+    Two things are required for that, neither achieved by dataset-pruning alone:
+    1. HyperSpy's own minimal HDF5 schema: two root attributes, an
+       "Experiments/<name>" group, one "axis-i" group per array dimension (a
+       handful of scalar attributes each: name/navigate/size/scale/offset/units/
+       type), the array itself relocated to ".../data", and three small
+       placeholder groups HyperSpy's reader unconditionally looks for (metadata,
+       original_metadata, learning_results). Confirmed by round-tripping a real
+       signal through HyperSpy's own writer and inspecting the result -- this
+       function reproduces exactly that, moving the existing dataset in place with
+       `h5py.Group.move()` (no data copy).
+    2. A ".hspy" file extension. `hs.load()`'s reader dispatch is purely
+       extension-based -- ".hdf5"/".h5" are claimed by multiple plugins (Delmic,
+       HSPY, USID) regardless of whether the file content is actually valid for
+       any of them, and `hs.load()` refuses to guess between them. ".hspy" is
+       HyperSpy's own, unambiguous extension.
+
+    Parameters
+    ----------
+    src_path : str
+        Path to the existing FourD-written HDF5 file (its own extension, e.g.
+        ".hdf5", is fine -- it's read here, not modified).
+    dst_path : str, optional
+        Output path. Defaults to `src_path` with its extension replaced by
+        ".hspy". Must differ from `src_path` (a copy is made; `src_path` is left
+        untouched).
+    dataset_key : str
+        Name of the array inside `src_path` (matches FourD's own dataset name;
+        "4D" is FourD's default and virtually never needs changing).
+    nav_axis_names, sig_axis_names : tuple of str
+        Names for the two navigation (scan) axes and two signal (detector) axes,
+        in that order -- matches FourD's own axis order (scan_y, scan_x, det_y,
+        det_x).
+
+    Returns
+    -------
+    str
+        `dst_path` actually written.
+    """
+    import shutil
+    import h5py
+
+    if dst_path is None:
+        dst_path = os.path.splitext(src_path)[0] + ".hspy"
+    if os.path.abspath(dst_path) == os.path.abspath(src_path):
+        raise ValueError("dst_path must differ from src_path -- this function copies, it doesn't convert in place.")
+    shutil.copyfile(src_path, dst_path)
+
+    with h5py.File(dst_path, "a") as f:
+        if dataset_key not in f:
+            raise KeyError(f"'{dataset_key}' dataset not found in {src_path}")
+        shape = f[dataset_key].shape
+        if len(shape) != 4:
+            raise ValueError(f"expected a 4D dataset, got shape {shape}")
+
+        f.attrs["file_format"] = "HyperSpy"
+        f.attrs["file_format_version"] = "3.3"
+
+        exps = f.require_group("Experiments")
+        expg = exps.require_group(dataset_key)
+        f.move(dataset_key, f"{expg.name}/data")
+
+        axis_names = list(nav_axis_names) + list(sig_axis_names)
+        navigate = [True, True, False, False]
+        for i, (name, size, nav) in enumerate(zip(axis_names, shape, navigate)):
+            ag = expg.require_group(f"axis-{i}")
+            ag.attrs["_type"] = "UniformDataAxis"
+            ag.attrs["name"] = name
+            ag.attrs["navigate"] = bool(nav)
+            ag.attrs["size"] = int(size)
+            ag.attrs["scale"] = 1.0
+            ag.attrs["offset"] = 0.0
+            ag.attrs["units"] = "_None_"
+            ag.attrs["is_binned"] = False
+
+        expg.require_group("metadata")
+        expg.require_group("original_metadata")
+        expg.require_group("learning_results")
+        att = expg.require_group("attributes")
+        att.attrs["_lazy"] = False
+        att.attrs["ragged"] = False
+
+    return dst_path
 
 
 class FourD():
@@ -1054,10 +1638,21 @@ class FourD():
         self.super.nx = nx
         self.super.ny = ny    
         self.super.set_file(filename)
-        self.super.det_bin = 1 
+        self.super.det_bin = 1
         self.super.scan_bin = 1
         self.super.chunksize = 2
+        self.super.chunksize_x = 2
 
+    def set_pattern_file(self, filename):
+        """
+        Switch to pixel-triggered (smart-scan / custom pattern) acquisition: reads
+        `filename` as one linearized scan-position index per line and uses it to
+        resolve each trigger's real (row, col), instead of computing position from
+        dwell time. Call this AFTER __init__ (which already called set_file) --
+        set_pattern_file re-decides the camera type from scratch, so it must be the
+        last call to win. Requires ScanBin=1.
+        """
+        self.super.set_pattern_file(filename)
 
     @property
     def DetectorSize(self):
@@ -1102,6 +1697,171 @@ class FourD():
     @ChunkSize.setter
     def ChunkSize(self, value):
         self.super.chunksize = value
+
+    @property
+    def ChunkSizeX(self):
+        """
+        int : on-disk chunk width along the scan-x axis (independent of ChunkSize,
+        which is the scan-y chunk height). Small values here (relative to nx) are
+        what makes a small-ROI-across-several-lines read fast -- the old behavior
+        (before this field existed) was always the full scan row width.
+        """
+        return self.super.chunksize_x
+
+    @ChunkSizeX.setter
+    def ChunkSizeX(self, value):
+        self.super.chunksize_x = value
+
+    @property
+    def Format(self):
+        """
+        str : output container format, "hdf5" (default) or "zarr". Both write the
+        same three logical arrays ("4D", "dose_image", "shape") with identical
+        values and chunk shape -- only the on-disk container differs. Zarr output
+        is a standard, spec-compliant Zarr v2 store (readable by any
+        zarr-python/dask.array.from_zarr client, no custom reader needed), stored
+        as "<output_filename>.zarr" alongside the (also always created, currently
+        unused when Format="zarr") "<output_filename>.hdf5" file.
+        """
+        return self.super.format
+
+    @Format.setter
+    def Format(self, value):
+        self.super.format = value
+
+    @property
+    def SaveMetadata(self):
+        """
+        bool : when True (default), the output file/store also gets the
+        "dose_image" and "shape" auxiliary arrays alongside "4D". Set False to
+        write only "4D" -- Dose_image is still computed and available from this
+        object's .Dose_image property either way, just not persisted to disk.
+        Generic 4D-STEM readers expect exactly one array per file/store; in
+        particular hyperspy's hs.load(fn, lazy=True) assumes this and gets
+        confused by "dose_image"/"shape" as extra siblings -- set SaveMetadata to
+        False before calling .run() if you intend to load the output that way.
+        """
+        return self.super.save_metadata
+
+    @SaveMetadata.setter
+    def SaveMetadata(self, value):
+        self.super.save_metadata = value
+
+    @property
+    def Decluster(self):
+        """
+        bool : charge-weighted, declustered 4D conversion (CHEETAH/.tpx3 only,
+        bitdepth=32 only, requires ScanBin=1). Off by default -- when False,
+        behavior is unchanged from before this feature existed.
+        """
+        return self.super.decluster
+
+    @Decluster.setter
+    def Decluster(self, value):
+        self.super.decluster = value
+
+    @property
+    def Dtime(self):
+        """
+        int : declustering time window (same meaning/default as Roi.Dtime)
+        """
+        return self.super.dtime
+
+    @Dtime.setter
+    def Dtime(self, value):
+        self.super.dtime = value
+
+    @property
+    def Dspace(self):
+        """
+        int : declustering space window (same meaning/default as Roi.Dspace)
+        """
+        return self.super.dspace
+
+    @Dspace.setter
+    def Dspace(self, value):
+        self.super.dspace = value
+
+    @property
+    def ClusterRange(self):
+        """
+        int : declustering search range (same meaning/default as Roi.ClusterRange)
+        """
+        return self.super.cluster_range
+
+    @ClusterRange.setter
+    def ClusterRange(self, value):
+        self.super.cluster_range = value
+
+    @property
+    def TotPerElectron(self):
+        """
+        float : calibration constant (typical single-electron cluster ToT-sum) used
+        to resolve each cluster's electron count when Decluster=True. No safe
+        default -- must be set from your own cluster ToT-sum histogram (e.g. Roi's,
+        if acquired under the same beam/detector conditions).
+        """
+        return self.super.tot_per_electron
+
+    @TotPerElectron.setter
+    def TotPerElectron(self, value):
+        self.super.tot_per_electron = value
+
+    @property
+    def ElectronCountLut(self):
+        """
+        2D nested list/array of int : alternative to TotPerElectron -- resolves each
+        cluster's electron count from a (cluster size, ToT) map instead of a single
+        ToT/TotPerElectron ratio. Row = cluster size, column = ToT, matching
+        ClustersizeTotHistogram's own layout. Empty by default (TotPerElectron stays
+        the default resolver); set directly, or set ElectronCountLutFile to load a
+        saved template instead. Both options remain available side by side.
+        """
+        return np.array(self.super.electron_count_lut)
+
+    @ElectronCountLut.setter
+    def ElectronCountLut(self, value):
+        self.super.electron_count_lut = value
+
+    @property
+    def ElectronCountLutFile(self):
+        """
+        str : path to a plain-text electron-count template file (see
+        ElectronCountLut) -- loaded into ElectronCountLut at the start of Run() if
+        non-empty. A reusable calibration artifact: valid for reuse as long as the
+        beam energy / detector setup it was built from hasn't changed. Empty by
+        default (feature off).
+        """
+        return self.super.electron_count_lut_file
+
+    @ElectronCountLutFile.setter
+    def ElectronCountLutFile(self, value):
+        self.super.electron_count_lut_file = value
+
+    @property
+    def ClustersizeHistogram(self):
+        """
+        1D numpy array : histogram of resolved cluster sizes, from the most recent
+        declustered Run().
+        """
+        return np.array(self.super.clustersize_histogram)
+
+    @property
+    def EnergyHistogram(self):
+        """
+        1D numpy array : histogram of resolved clusters' total summed ToT, from the
+        most recent declustered Run().
+        """
+        return np.array(self.super.energy_histogram)
+
+    @property
+    def ClustersizeTotHistogram(self):
+        """
+        2D numpy array, shape (50, 4096) : joint histogram of resolved cluster size
+        (rows) vs. total summed ToT (columns), from the most recent declustered
+        Run().
+        """
+        return np.array(self.super.clustersize_tot_histogram)
 
     @property
     def DwellTime(self):

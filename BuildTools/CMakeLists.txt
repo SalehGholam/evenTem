@@ -25,6 +25,13 @@ option(TORCH "option for enabling or disabling Torch use for frame processing (b
 option(PIXET "option for enabling or disabling Pixet" OFF)
 option(LOG "option for enabling or disabling debug logging" OFF)
 set(CMAKE_BUILD_TYPE Release)
+# This machine's HDF5 (and its bundled zlib) CMake config packages only export a
+# RelWithDebInfo imported configuration, not a Release one -- without this mapping,
+# imported targets/variables resolved from find_package(HDF5 ...) silently have no
+# usable library path under a plain Release build, which shows up at link time as
+# "unresolved external symbol" for every H5:: class and for zlib's compress2/
+# compressBound, not as a missing-package configure error.
+set(CMAKE_MAP_IMPORTED_CONFIG_RELEASE "Release;RelWithDebInfo")
 
 set(SOURCES
     ../EvenTem/src/utils/Declusterer.hpp
@@ -85,8 +92,32 @@ if (WIN32)
     # link_directories(${FFTW3_DIR})
     
     # set(HDF5_ROOT "Z:/Arno/HDF5/1.14.3")
-    set(HDF5_ROOT "C:/Program Files/HDF_Group/HDF5/1.14.3")
+    # Per-machine HDF5 install location -- a plain set() here would silently override
+    # any -DHDF5_ROOT=... passed on the cmake command line (a normal variable shadows
+    # a cache variable of the same name), so only fall back to this default when the
+    # caller hasn't already supplied one.
+    if(NOT DEFINED HDF5_ROOT)
+        set(HDF5_ROOT "C:/Program Files/HDF_Group/HDF5/2.2.0")
+    endif()
     find_package(HDF5 1.14.3 REQUIRED COMPONENTS CXX)
+    # Without this, H5Cpp.h's DLLVAR macros (see H5api_adpt.h) fall back to plain
+    # `extern` instead of `__declspec(dllimport)` for the H5:: wrapper classes'
+    # static members (PredType::NATIVE_UINT8, FileAccPropList::DEFAULT, etc.) --
+    # compiles fine, but the linker then expects those symbols defined in OUR OWN
+    # object files instead of imported from hdf5_cpp.dll, failing as "unresolved
+    # external symbol" for basically every H5:: static despite hdf5_cpp.lib being
+    # linked correctly.
+    add_definitions(-DH5_BUILT_AS_DYNAMIC_LIB)
+    # HDF5's own bundled zlib (HDF5_ROOT/lib/zs.lib, see cmake/ZLIB-static*.cmake)
+    # was itself built with Intel's compiler and calls Intel-specific intrinsics
+    # (_intel_fast_memcpy/_intel_fast_memset) with no fallback -- those are real
+    # calls, not just speculative default-lib requests, so there's no way to link
+    # against that particular zlib without an actual Intel toolchain. Use vcpkg's
+    # plain, MSVC-built zlib instead for the compress2/compressBound symbols
+    # FourD.cpp's Zarr writer needs -- functionally identical (same zlib API), and
+    # this is the only zlib actually used by our own code; HDF5.dll has its own
+    # zlib statically linked into it already, from whenever the HDF Group built it.
+    set(HDF5_BUNDLED_ZLIB "C:/vcpkg/installed/x64-windows-static-md/lib/zs.lib")
 
     set(BUILD_DIR ${PROJECT_BINARY_DIR}/${CMAKE_BUILD_TYPE})
     message(STATUS "Build directory: ${BUILD_DIR}")
@@ -112,7 +143,7 @@ if (WIN32)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /nologo")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GL")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GA")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /O3")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /O2")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MT")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Qpar")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /favor:INTEL64")
@@ -156,8 +187,27 @@ if (WIN32)
         list(INSERT SOURCES 0 ../EvenTem/src/core/GPRI.h ../EvenTem/src/core/GPRI.cpp ../EvenTem/src/core/GPRI.cu)
     endif()
 
-    pybind11_add_module(eventem ${SOURCES}) 
-    pybind11_add_module(pacbed ${SOURCES}) 
+    pybind11_add_module(eventem ${SOURCES})
+    pybind11_add_module(pacbed ${SOURCES})
+
+    # HDF5's official Windows binary (hdf5_cpp.lib, linked below via HDF5_LIBRARIES)
+    # is itself built with Intel's compiler and embeds default-library directives
+    # for several Intel runtime libs, which this machine has no Intel toolchain to
+    # provide -- confirmed not caused by any compiler flag above (removed each in
+    # turn and still hit the same error), and found one at a time as each newly
+    # revealed the next ("cannot open file 'libircmt.lib'", then, once that was
+    # excluded, 'svml_dispmd.lib'). The actual SVML/runtime implementation those
+    # symbols would call lives inside hdf5_cpp.dll itself (already compiled and
+    # linked by the HDF Group; libmmd.dll -- the one member of this family actually
+    # needed at RUNTIME -- already ships alongside the built .pyd for exactly this
+    # reason). Our own link step never calls into any of these directly, so
+    # suppressing the demand for the files, rather than supplying them, is the
+    # correct fix, not a workaround. Set via the LINK_FLAGS target property (not
+    # CMAKE_*_LINKER_FLAGS or target_link_options) since pybind11_add_module's
+    # generated targets don't pick up those.
+    set(HDF5_INTEL_RUNTIME_EXCLUDE " /NODEFAULTLIB:libircmt.lib /NODEFAULTLIB:svml_dispmd.lib /NODEFAULTLIB:libmmd.lib /NODEFAULTLIB:libdecimal.lib /NODEFAULTLIB:libirc.lib")
+    set_property(TARGET eventem APPEND_STRING PROPERTY LINK_FLAGS "${HDF5_INTEL_RUNTIME_EXCLUDE}")
+    set_property(TARGET pacbed APPEND_STRING PROPERTY LINK_FLAGS "${HDF5_INTEL_RUNTIME_EXCLUDE}")
 
 
     if(GPRI_OPTION OR TORCH)
@@ -176,10 +226,10 @@ if (WIN32)
     # target_include_directories(eventem PRIVATE include ../EvenTem/src/core ../EvenTem/src/utils ../EvenTem/src/detectors)
     target_include_directories(eventem PRIVATE include ../EvenTem/src/core ../EvenTem/src/utils ../EvenTem/src/detectors ${Python3_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS}) #${FFTW3_DIR}
     # target_link_libraries(eventem PRIVATE pybind11::module ${CMAKE_DL_LIBS} ws2_32)
-    target_link_libraries(eventem PRIVATE ${Python3_LIBRARIES} ${CMAKE_DL_LIBS} ${HDF5_LIBRARIES} ws2_32) #libfftw3f-3
+    target_link_libraries(eventem PRIVATE ${Python3_LIBRARIES} ${CMAKE_DL_LIBS} ${HDF5_LIBRARIES} ${HDF5_BUNDLED_ZLIB} ws2_32) #libfftw3f-3
 
     target_include_directories(pacbed PRIVATE include ../EvenTem/src/core ../EvenTem/src/utils ../EvenTem/src/detectors ${Python3_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS})
-    target_link_libraries(pacbed PRIVATE ${Python3_LIBRARIES} ${CMAKE_DL_LIBS} ${HDF5_LIBRARIES} ws2_32)
+    target_link_libraries(pacbed PRIVATE ${Python3_LIBRARIES} ${CMAKE_DL_LIBS} ${HDF5_LIBRARIES} ${HDF5_BUNDLED_ZLIB} ws2_32)
 
 endif (WIN32)
 #----------------------------------------------------------------------------------------------------------------

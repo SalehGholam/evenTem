@@ -311,6 +311,9 @@ private:
             case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::pacbed:
                 this->pacbed(_probe_position_total%this->nxy,_kx,_ky,_id_image);
                 break;
+            case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::pacbed_mask:
+                this->pacbed_mask(_probe_position_total%this->nxy,_kx,_ky,_id_image);
+                break;
             case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::var:
                 this->var(_probe_position_total%this->nxy,_kx,_ky,_id_image);
                 break;
@@ -379,6 +382,9 @@ private:
                 break;  
             case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::pacbed:
                 this->pacbed(_probe_position_total%this->nxy,_kx,_ky,_id_image);
+                break;
+            case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::pacbed_mask:
+                this->pacbed_mask(_probe_position_total%this->nxy,_kx,_ky,_id_image);
                 break;
             case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::var:
                 this->var(_probe_position_total%this->nxy,_kx,_ky,_id_image);

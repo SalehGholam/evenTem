@@ -22,11 +22,15 @@ void LiveProcessor::process_data()
         pool.init(n_threads, queue_size);
 
     size_t img_num = 0;
-    size_t first_frame = img_num * nxy;
+    // fr_count_seed's declaration in LiveProcessor.h explains why this needs to
+    // seed both first_frame and the progress monitor's own counter -- default 0
+    // for every mode that doesn't use multi-process file-splitting.
+    size_t first_frame = img_num * nxy + fr_count_seed;
     size_t end_frame = (img_num + 1) * nxy;
     size_t fr_total_u = (size_t)fr_total;
 
     ProgressMonitor prog_mon(fr_total);
+    prog_mon.fr_count = fr_count_seed;
     p_prog_mon = &prog_mon;
     p_prog_mon->verbose = progress_verbose;
 

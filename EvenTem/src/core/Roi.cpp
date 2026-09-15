@@ -17,6 +17,29 @@
 void Roi::run(){
      py::gil_scoped_release release;
      reset();
+
+     if (decluster)
+     {
+         if (camera != CAMERA::CHEETAH && camera != CAMERA::CHEETAH_PIXELTRIG)
+             throw std::runtime_error("Roi decluster=True is currently only supported for .tpx3 (CHEETAH) files.");
+         // electron_count_lut_file (a saved 2D map, see ClusterResolver.hpp) is an
+         // alternative to tot_per_electron's single ToT/ratio formula -- loading it
+         // here means electron_count_lut is populated before the tot_per_electron
+         // check below, so a run relying solely on the map (tot_per_electron left at
+         // its default 0.0) is not rejected.
+         if (!electron_count_lut_file.empty())
+             electron_count_lut = load_electron_count_lut_file(electron_count_lut_file);
+         if (tot_per_electron <= 0.0 && electron_count_lut.empty())
+             throw std::invalid_argument("Roi.tot_per_electron must be set (calibrated from your own cluster ToT-sum histogram), or electron_count_lut_file/electron_count_lut must be set, before enabling decluster=True.");
+     }
+     if (tot_mode)
+     {
+         if (camera != CAMERA::CHEETAH && camera != CAMERA::CHEETAH_PIXELTRIG)
+             throw std::runtime_error("Roi tot_mode=True is currently only supported for .tpx3 (CHEETAH) files.");
+         if (decluster)
+             throw std::runtime_error("Roi tot_mode and decluster cannot both be enabled -- tot_mode sums each raw hit's own ToT (no clustering); decluster resolves clusters into electron counts. Pick one.");
+     }
+
      // Run camera dependent pipeline
      switch (camera)
      {
@@ -69,11 +92,19 @@ void Roi::run(){
                 file_path,
                 socket
             );
-            if (b_ROI_4D)
+            if (decluster)
+            {
+                std::vector<std::vector<int>> *_p_electron_lut = electron_count_lut.empty() ? nullptr : &electron_count_lut;
+                if (roi_bitdepth == 8) cam.enable_roi_declustered(dtime,dspace,cluster_range,tot_per_electron,Roi_4D_8,b_ROI_4D,&Roi_scan_image,&Roi_diffraction_pattern, lower_left, upper_right,det_bin,n_threads,&clustersize_histogram,&energy_histogram,&clustersize_tot_histogram,_p_electron_lut);
+                else if (roi_bitdepth == 16) cam.enable_roi_declustered(dtime,dspace,cluster_range,tot_per_electron,Roi_4D_16,b_ROI_4D,&Roi_scan_image,&Roi_diffraction_pattern, lower_left, upper_right,det_bin,n_threads,&clustersize_histogram,&energy_histogram,&clustersize_tot_histogram,_p_electron_lut);
+                else if (roi_bitdepth == 32) cam.enable_roi_declustered(dtime,dspace,cluster_range,tot_per_electron,Roi_4D_32,b_ROI_4D,&Roi_scan_image,&Roi_diffraction_pattern, lower_left, upper_right,det_bin,n_threads,&clustersize_histogram,&energy_histogram,&clustersize_tot_histogram,_p_electron_lut);
+            }
+            else if (b_ROI_4D)
             {
                 if (roi_bitdepth == 8) cam.enable_roi_4D(Roi_4D_8,&Roi_scan_image,&Roi_diffraction_pattern, lower_left, upper_right,det_bin);
                 else if (roi_bitdepth == 16) cam.enable_roi_4D(Roi_4D_16,&Roi_scan_image,&Roi_diffraction_pattern, lower_left, upper_right,det_bin);
                 else if (roi_bitdepth == 32) cam.enable_roi_4D(Roi_4D_32,&Roi_scan_image,&Roi_diffraction_pattern, lower_left, upper_right,det_bin);
+                if (tot_mode) cam.b_tot = true;
             }
             else if (use_mask)
             {
@@ -82,6 +113,7 @@ void Roi::run(){
             else
             {
                 cam.enable_roi(&Roi_scan_image_stack,&Roi_diffraction_pattern_stack,&Roi_scan_image,&Roi_diffraction_pattern, lower_left, upper_right);
+                if (tot_mode) cam.b_tot = true;
             }
             cam.run();
             process_data();
@@ -92,8 +124,8 @@ void Roi::run(){
         {
             using namespace CHEETAH_ADDITIONAL;
             CHEETAH_pixeltrig<EVENT, BUFFER_SIZE, N_BUFFER> cam(
-                nx, 
-                ny, 
+                nx,
+                ny,
                 &b_cumulative,
                 rep,
                 processor_line,
@@ -103,11 +135,19 @@ void Roi::run(){
                 socket,
                 pattern_file
             );
-            if (b_ROI_4D)
+            if (decluster)
+            {
+                std::vector<std::vector<int>> *_p_electron_lut = electron_count_lut.empty() ? nullptr : &electron_count_lut;
+                if (roi_bitdepth == 8) cam.enable_roi_declustered(dtime,dspace,cluster_range,tot_per_electron,Roi_4D_8,b_ROI_4D,&Roi_scan_image,&Roi_diffraction_pattern, lower_left, upper_right,det_bin,n_threads,&clustersize_histogram,&energy_histogram,&clustersize_tot_histogram,_p_electron_lut);
+                else if (roi_bitdepth == 16) cam.enable_roi_declustered(dtime,dspace,cluster_range,tot_per_electron,Roi_4D_16,b_ROI_4D,&Roi_scan_image,&Roi_diffraction_pattern, lower_left, upper_right,det_bin,n_threads,&clustersize_histogram,&energy_histogram,&clustersize_tot_histogram,_p_electron_lut);
+                else if (roi_bitdepth == 32) cam.enable_roi_declustered(dtime,dspace,cluster_range,tot_per_electron,Roi_4D_32,b_ROI_4D,&Roi_scan_image,&Roi_diffraction_pattern, lower_left, upper_right,det_bin,n_threads,&clustersize_histogram,&energy_histogram,&clustersize_tot_histogram,_p_electron_lut);
+            }
+            else if (b_ROI_4D)
             {
                 if (roi_bitdepth == 8) cam.enable_roi_4D(Roi_4D_8,&Roi_scan_image,&Roi_diffraction_pattern, lower_left, upper_right,det_bin);
                 else if (roi_bitdepth == 16) cam.enable_roi_4D(Roi_4D_16,&Roi_scan_image,&Roi_diffraction_pattern, lower_left, upper_right,det_bin);
                 else if (roi_bitdepth == 32) cam.enable_roi_4D(Roi_4D_32,&Roi_scan_image,&Roi_diffraction_pattern, lower_left, upper_right,det_bin);
+                if (tot_mode) cam.b_tot = true;
             }
             else if (use_mask)
             {
@@ -116,6 +156,7 @@ void Roi::run(){
             else
             {
                 cam.enable_roi(&Roi_scan_image_stack,&Roi_diffraction_pattern_stack,&Roi_scan_image,&Roi_diffraction_pattern, lower_left, upper_right);
+                if (tot_mode) cam.b_tot = true;
             }
             cam.run();
             process_data();
@@ -675,6 +716,14 @@ void Roi::line_processor(
             id_image = *processor_line / ny % 2;
         idxx = (int)(prog_mon->fr_count) % nxy;
         *prog_mon += nx;
+
+        // Mirrors FourD::line_processor's identical copy -- exposed as the
+        // read-only `.progress` (0-100) property. Raw stdout/stderr writes from a
+        // C extension (like ProgressMonitor's own console bar) don't reliably
+        // reach a Jupyter cell's output; this lets Python poll actual progress
+        // from another thread instead (run() releases the GIL) and render it
+        // with a real notebook-native progress bar (tqdm, ipywidgets, ...).
+        progress_percent = prog_mon->progress_percent;
 
         // end of line handler
         int update_line = idxx / nx;
