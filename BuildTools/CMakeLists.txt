@@ -189,6 +189,18 @@ if (WIN32)
 
     pybind11_add_module(eventem ${SOURCES})
     pybind11_add_module(pacbed ${SOURCES})
+    # A second, full build of the exact same sources under a distinct importable
+    # name (see pybind.cpp's MODULE_NAME docstring for why this is necessary --
+    # renaming just the output file doesn't work). Lets a caller (e.g. EDyssey)
+    # import both an old, separately-vendored "eventem" build and this repo's
+    # current source as "eventem_new" in the same Python process, for a direct
+    # side-by-side comparison. Opt-in: only built when -DBUILD_EVENTEM_NEW=ON is
+    # passed; off by default so the normal eventem/pacbed build is unaffected.
+    option(BUILD_EVENTEM_NEW "Also build a second copy of eventem importable as 'eventem_new'" OFF)
+    if(BUILD_EVENTEM_NEW)
+        pybind11_add_module(eventem_new ${SOURCES})
+        target_compile_definitions(eventem_new PRIVATE MODULE_NAME=eventem_new)
+    endif()
 
     # HDF5's official Windows binary (hdf5_cpp.lib, linked below via HDF5_LIBRARIES)
     # is itself built with Intel's compiler and embeds default-library directives
@@ -208,6 +220,9 @@ if (WIN32)
     set(HDF5_INTEL_RUNTIME_EXCLUDE " /NODEFAULTLIB:libircmt.lib /NODEFAULTLIB:svml_dispmd.lib /NODEFAULTLIB:libmmd.lib /NODEFAULTLIB:libdecimal.lib /NODEFAULTLIB:libirc.lib")
     set_property(TARGET eventem APPEND_STRING PROPERTY LINK_FLAGS "${HDF5_INTEL_RUNTIME_EXCLUDE}")
     set_property(TARGET pacbed APPEND_STRING PROPERTY LINK_FLAGS "${HDF5_INTEL_RUNTIME_EXCLUDE}")
+    if(BUILD_EVENTEM_NEW)
+        set_property(TARGET eventem_new APPEND_STRING PROPERTY LINK_FLAGS "${HDF5_INTEL_RUNTIME_EXCLUDE}")
+    endif()
 
 
     if(GPRI_OPTION OR TORCH)
@@ -230,6 +245,19 @@ if (WIN32)
 
     target_include_directories(pacbed PRIVATE include ../EvenTem/src/core ../EvenTem/src/utils ../EvenTem/src/detectors ${Python3_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS})
     target_link_libraries(pacbed PRIVATE ${Python3_LIBRARIES} ${CMAKE_DL_LIBS} ${HDF5_LIBRARIES} ${HDF5_BUNDLED_ZLIB} ws2_32)
+
+    if(BUILD_EVENTEM_NEW)
+        target_include_directories(eventem_new PRIVATE include ../EvenTem/src/core ../EvenTem/src/utils ../EvenTem/src/detectors ${Python3_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS})
+        target_link_libraries(eventem_new PRIVATE ${Python3_LIBRARIES} ${CMAKE_DL_LIBS} ${HDF5_LIBRARIES} ${HDF5_BUNDLED_ZLIB} ws2_32)
+        if (PIXET)
+            target_link_directories(eventem_new PRIVATE include)
+            target_link_libraries(eventem_new PRIVATE pxcore.lib)
+        endif()
+        if(GPRI_OPTION OR TORCH)
+            target_include_directories(eventem_new PRIVATE ${TORCH_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS})
+            target_link_libraries(eventem_new PRIVATE ${TORCH_LIBRARIES} ${CUDA_LIBRARIES})
+        endif()
+    endif()
 
 endif (WIN32)
 #----------------------------------------------------------------------------------------------------------------

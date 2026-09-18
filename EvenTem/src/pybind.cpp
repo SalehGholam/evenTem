@@ -35,17 +35,22 @@
 
 namespace py = pybind11;
 
-// #ifdef EVENTEM
-// #define MODULE_NAME eventem
-// #endif
-// #ifdef EVENTEMTORCH
-// #define MODULE_NAME eventemTorch
-// #endif
+// Lets a build produce a distinctly-importable module (e.g. "eventem_new",
+// for a second build of this same source coexisting in the same Python
+// process as the main "eventem" module -- Python's import machinery keys an
+// extension module on the PyInit_<name> symbol derived from its target/file
+// name, so two separately-built .pyd's literally named "eventem" can't both
+// be imported in one process; renaming just the file doesn't work either
+// (confirmed directly) since the compiled-in init symbol name has to match
+// too). Pass -DMODULE_NAME=eventem_new (CMake target_compile_definitions) to
+// build under that name; every other target is unaffected by this default.
+#ifndef MODULE_NAME
+#define MODULE_NAME eventem
+#endif
 
+PYBIND11_MODULE(MODULE_NAME, m) {
 
-PYBIND11_MODULE(eventem, m) {
-
-        py::class_<LiveProcessor>(m, "LiveProcessor")
+        py::class_<LiveProcessor>(m, "LiveProcessor", py::module_local())
         .def_readwrite("nx", &LiveProcessor::nx)
         .def_readwrite("ny", &LiveProcessor::ny)
         .def_readwrite("dt", &LiveProcessor::dt)
@@ -69,7 +74,7 @@ PYBIND11_MODULE(eventem, m) {
         .def("set_file", &LiveProcessor::set_file);
 
 
-        py::class_<Ricom,LiveProcessor>(m, "Ricom")
+        py::class_<Ricom,LiveProcessor>(m, "Ricom", py::module_local())
         .def(py::init<int>(),py::arg("repetitions"))
         .def("add_child", py::overload_cast<vSTEM*>(&Ricom::add_child))
         .def("set_kernel", &Ricom::set_kernel)
@@ -85,7 +90,7 @@ PYBIND11_MODULE(eventem, m) {
         .def_readonly("ricom_image", &Ricom::ricom_image);
 
 
-        py::class_<vSTEM,LiveProcessor>(m, "vSTEM")
+        py::class_<vSTEM,LiveProcessor>(m, "vSTEM", py::module_local())
         .def(py::init<int>(),py::arg("repetitions"))
         .def_readwrite("inner_radia", &vSTEM::inner_radia)
         .def_readwrite("outer_radia", &vSTEM::outer_radia)
@@ -128,7 +133,7 @@ PYBIND11_MODULE(eventem, m) {
         })
         .def_readonly("vSTEM_image", &vSTEM::vSTEM_image);
 
-        py::class_<tcBF,LiveProcessor>(m, "tcBF")
+        py::class_<tcBF,LiveProcessor>(m, "tcBF", py::module_local())
         .def(py::init<int>(),py::arg("repetitions"))
         .def("set_detector_mask", &tcBF::set_detector_mask)
         .def("run", &tcBF::run)        
@@ -136,7 +141,7 @@ PYBIND11_MODULE(eventem, m) {
         .def_readonly("BF_image", &tcBF::BF_image);
 
                 
-        py::class_<FourD<8>, LiveProcessor>(m, "FourD8")
+        py::class_<FourD<8>, LiveProcessor>(m, "FourD8", py::module_local())
         .def(py::init<const std::string&, int, int,int>(), py::arg("output_filename"), py::arg("repetitions"), py::arg("bitdepth"),py::arg("compression_factor"))
         .def("run", &FourD<8>::run)
         .def("allocate_chunk", &FourD<8>::allocate_chunk)
@@ -160,7 +165,7 @@ PYBIND11_MODULE(eventem, m) {
         .def_readonly("Dose_image", &FourD<8>::Dose_image);
 
 
-        py::class_<FourD<16>, LiveProcessor>(m, "FourD16")
+        py::class_<FourD<16>, LiveProcessor>(m, "FourD16", py::module_local())
         .def(py::init<const std::string&, int, int,int>(), py::arg("output_filename"), py::arg("repetitions"), py::arg("bitdepth"),py::arg("compression_factor"))
         .def("run", &FourD<16>::run)
         .def("allocate_chunk", &FourD<16>::allocate_chunk)
@@ -184,7 +189,7 @@ PYBIND11_MODULE(eventem, m) {
         .def_readonly("Dose_image", &FourD<16>::Dose_image);
 
 
-        py::class_<FourD<32>, LiveProcessor>(m, "FourD32")
+        py::class_<FourD<32>, LiveProcessor>(m, "FourD32", py::module_local())
         .def(py::init<const std::string&, int, int,int>(), py::arg("output_filename"), py::arg("repetitions"), py::arg("bitdepth"),py::arg("compression_factor"))
         .def("run", &FourD<32>::run)
         .def("allocate_chunk", &FourD<32>::allocate_chunk)
@@ -209,7 +214,7 @@ PYBIND11_MODULE(eventem, m) {
 
 
         #ifdef GPRI_OPTION_ENABLED
-                py::class_<GPRI,LiveProcessor>(m, "GPRI")
+                py::class_<GPRI,LiveProcessor>(m, "GPRI", py::module_local())
                 .def(py::init<int,std::string&,bool>(),py::arg("repetitions"), py::arg("path_to_library"),py::arg("allow_cuda"))
                 .def("add_child", py::overload_cast<vSTEM*>(&GPRI::add_child))
                 .def("get_GPRI_result", &GPRI::get_GPRI_result)
@@ -230,7 +235,7 @@ PYBIND11_MODULE(eventem, m) {
                 .def("run", &GPRI::run);
         #endif
         
-        py::class_<Pacbed,LiveProcessor>(m, "Pacbed")
+        py::class_<Pacbed,LiveProcessor>(m, "Pacbed", py::module_local())
         .def(py::init<int>(),py::arg("repetitions"))
         .def("run", &Pacbed::run)
         .def("set_scan_mask", &Pacbed::set_scan_mask)
@@ -246,7 +251,7 @@ PYBIND11_MODULE(eventem, m) {
         .def_readonly("clustersize_tot_histogram", &Pacbed::clustersize_tot_histogram)
         .def_readonly("Pacbed_image", &Pacbed::Pacbed_image);
 
-        py::class_<Roi,LiveProcessor>(m, "Roi")
+        py::class_<Roi,LiveProcessor>(m, "Roi", py::module_local())
         .def(py::init<int,bool>(), py::arg("repetitions"), py::arg("extract_4D"))
         .def("run", &Roi::run)
         .def_readonly("Roi_scan_image", &Roi::Roi_scan_image)
@@ -271,7 +276,7 @@ PYBIND11_MODULE(eventem, m) {
         .def_readonly("clustersize_tot_histogram", &Roi::clustersize_tot_histogram)
         .def_readwrite("tot_mode", &Roi::tot_mode);
 
-        py::class_<Var,LiveProcessor>(m, "Var")
+        py::class_<Var,LiveProcessor>(m, "Var", py::module_local())
         .def(py::init<int>(),py::arg("repetitions"))
         .def("run", &Var::run)
         .def("set_offset", &Var::set_offset)
@@ -290,7 +295,7 @@ PYBIND11_MODULE(eventem, m) {
         .def_readonly("clustersize_tot_histogram", &Var::clustersize_tot_histogram)
         .def_readonly("Var_image", &Var::Var_image);
 
-        py::class_<Electron,LiveProcessor>(m, "Electron")
+        py::class_<Electron,LiveProcessor>(m, "Electron", py::module_local())
         .def(py::init<int>(),py::arg("repetitions"))
         .def("run", &Electron::run)
         .def_readwrite("decluster", &Electron::decluster)
@@ -305,7 +310,7 @@ PYBIND11_MODULE(eventem, m) {
         .def_readwrite("clustersize_histogram", &Electron::clustersize_histogram)
         .def_readwrite("energy_histogram", &Electron::energy_histogram);
 
-        py::class_<EELS,LiveProcessor>(m, "EELS")
+        py::class_<EELS,LiveProcessor>(m, "EELS", py::module_local())
         .def(py::init<int>(),py::arg("repetitions"))
         .def("run", &EELS::run)
         .def_readonly("EELS_data", &EELS::EELS_data);
@@ -315,7 +320,7 @@ PYBIND11_MODULE(eventem, m) {
 
 PYBIND11_MODULE(pacbed, m) {
 
-        py::class_<LiveProcessor>(m, "LiveProcessor")
+        py::class_<LiveProcessor>(m, "LiveProcessor", py::module_local())
         .def_readwrite("nx", &LiveProcessor::nx)
         .def_readwrite("ny", &LiveProcessor::ny)
         .def_readwrite("dt", &LiveProcessor::dt)
@@ -338,7 +343,7 @@ PYBIND11_MODULE(pacbed, m) {
         .def_readonly("processor_line", &LiveProcessor::processor_line)
         .def("set_file", &LiveProcessor::set_file);
 
-        py::class_<Pacbed,LiveProcessor>(m, "Pacbed")
+        py::class_<Pacbed,LiveProcessor>(m, "Pacbed", py::module_local())
         .def(py::init<int>(),py::arg("repetitions"))
         .def("run", &Pacbed::run)
         .def("set_scan_mask", &Pacbed::set_scan_mask)
