@@ -19,8 +19,9 @@
 #include <windows.h>
 #endif
 #include <limits>
-#include <string> 
+#include <string>
 #include <fstream>
+#include <filesystem>
 
 
 class FileConnectorMmap

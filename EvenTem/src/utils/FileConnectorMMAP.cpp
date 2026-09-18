@@ -18,6 +18,9 @@
 void FileConnectorMmap::open_file()
 {
     const char* filename = path.c_str();
+    // Previously never set (left at its default-constructed 0 forever), making
+    // would_exceed_file() meaningless -- see CPP_EVENTEM_BUGS.md #8.
+    file_size = std::filesystem::file_size(path);
     #ifdef _WIN32
         hFile = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
         hMap = CreateFileMappingA(hFile, NULL, PAGE_READONLY, 0, 0, NULL);

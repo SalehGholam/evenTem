@@ -115,7 +115,16 @@ private:
 
     void parse_event(event *packet)
     {
-        toa = ((((*packet & 0xFFFF) << 14) + ((*packet >> 30) & 0x3FFF)) << 4) + toa_offset;
+        // - ((*packet >> 16) & 0xF): the FToA fine-timing correction term, matching
+        // parse_event_w_tot() below -- previously omitted here, so the *same*
+        // physical hit reconstructs to a ToA up to 15 ticks (~23ns) different
+        // depending on whether declustering (which uses parse_event_w_tot) is
+        // active for the run. Near a scan-line dwell-time boundary that's enough
+        // to shift which column/line a hit is attributed to, or to accept/reject
+        // it at a flyback boundary -- the root cause of the small, consistent
+        // ~0.15-0.2% plain-vs-declustered residual documented in pyeventem's
+        // CPP_EVENTEM_BUGS.md #4.
+        toa = ((((*packet & 0xFFFF) << 14) + ((*packet >> 30) & 0x3FFF)) << 4) - ((*packet >> 16) & 0xF) + toa_offset;
         uint64_t _probe_position = ( toa - (rise_t[chip_id] * 2)) / dt;
         // Guard against a faster chip's line_count racing past the intended
         // ny*repetitions total before the GLOBAL repetitions_reached flag (which
@@ -198,7 +207,14 @@ private:
                     break;
                 case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::roi_4D:
                     this->roi_4D(_probe_position,_kx,_ky,this->id_image);
-                    break;  
+                    break;
+                case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::tcBF:
+                    // Previously missing entirely -- tcBF was fully wired up (enum
+                    // value, processor class, enable_tcBF()) but never actually
+                    // dispatched here, so a tcBF run on Cheetah data silently
+                    // produced an all-zero result. See CPP_EVENTEM_BUGS.md #7.
+                    this->tcBF(_probe_position,_kx,_ky,this->id_image);
+                    break;
                 case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::write_electron:
                     this->write_electron(_probe_position,_kx,_ky,this->id_image);
                     break;
@@ -283,6 +299,10 @@ private:
                     // reaches via Roi.tot_mode=True (declustered Roi uses a separate
                     // cluster callback, not this per-event dispatch, for its 4D cube).
                     this->roi_4D_ToT(_probe_position,_kx,_ky,this->id_image);
+                    break;
+                case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::tcBF:
+                    // See the identical case in parse_event() above -- CPP_EVENTEM_BUGS.md #7.
+                    this->tcBF(_probe_position,_kx,_ky,this->id_image);
                     break;
                 case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::write_electron:
                     this->write_electron(_probe_position,_kx,_ky,this->id_image);
@@ -746,9 +766,21 @@ public:
         ), dt((uint64_t)dt*16/25)
         {
             this->n_cam = 512;
-            if (dt == 0){
+            if (this->dt == 0){
+                // Bug (CPP_EVENTEM_BUGS.md #9): `dt = 1000;` here used to write only to
+                // the constructor's reference PARAMETER (and, through it, the caller's
+                // own int) -- but this->dt (the member actually used as the fallback
+                // dwell time everywhere else in this class) was already computed from
+                // the parameter's PRE-fallback value in the initializer list above,
+                // which runs before this body. So the member stayed 0 forever
+                // regardless of this assignment: the fallback never actually took
+                // effect. Now sets this->dt directly (in the same tick units as the
+                // initializer list's own conversion), and still updates the parameter
+                // too so a caller reading `dt` back afterward sees the fallback value
+                // applied, matching the pre-fix API surface.
                 std::cout << "Dwell time not provided! This means sacrificing the first line" << std::endl;
                 dt = 1000;
+                this->dt = (uint64_t)dt*16/25;
             }
         };
 };

@@ -109,7 +109,18 @@ void LiveProcessor::set_file(std::string filename)
     }
     else if (std::filesystem::path(filename).extension() == ".tpx3")
     {
-        camera = CAMERA::CHEETAH;
+        // Real bug, found the hard way: set_file() used to unconditionally set
+        // CAMERA::CHEETAH here, silently overwriting CAMERA::CHEETAH_PIXELTRIG if
+        // set_pattern_file() had already been called -- since both raster and
+        // pixel-triggered acquisitions share the same ".tpx3" extension, there is
+        // no way to tell them apart from the filename alone. Calling
+        // set_pattern_file() then set_file() (a natural, arguably more common
+        // order than the reverse) silently downgraded a pixel-trigger run back to
+        // raster decoding of pixel-trigger-formatted data -- which reliably
+        // crashed natively (out-of-bounds access from garbage probe positions),
+        // not merely produced wrong output. Now preserves CHEETAH_PIXELTRIG if a
+        // pattern file is already set, regardless of call order.
+        camera = pattern_file.empty() ? CAMERA::CHEETAH : CAMERA::CHEETAH_PIXELTRIG;
         n_cam = 512;
     }
     else if (std::filesystem::path(filename).extension() == ".electron") camera = CAMERA::ELECTRON;

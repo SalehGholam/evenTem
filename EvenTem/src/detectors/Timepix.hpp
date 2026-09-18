@@ -108,7 +108,7 @@ protected:
     inline void vstem(uint64_t _probe_position, uint16_t _kx, uint16_t _ky, uint16_t _id_image)
     {
         int _d2 = (_kx - x_offset)*(_kx - x_offset) + (_ky - y_offset)*(_ky - y_offset);
-        if (_d2 > in_radius_sqr && _d2 <= out_radius_sqr)
+        if (_d2 >= in_radius_sqr && _d2 <= out_radius_sqr)  // inclusive inner radius, matching multi_vstem/AnnularDetector::compute_detector -- see CPP_EVENTEM_BUGS.md #6
         {   
             (*p_stem_data)[_id_image][_probe_position]++;
         }
@@ -168,7 +168,9 @@ protected:
     #endif
 
 
-    // STILL WANT TO FLIP THESE! KY KX
+    // FIXED (see CPP_EVENTEM_BUGS.md #5): voxel_offset below now indexes ky*n_cam+kx,
+    // matching Pacbed/Roi. Breaking change for anyone relying on the old kx*n_cam+ky
+    // orientation of a FourD cube exported before this fix.
 
     inline void count_chunked_8(uint64_t _probe_position, uint16_t _kx, uint16_t _ky, uint16_t _id_image)
     {
@@ -179,7 +181,7 @@ protected:
 
         (*p_counts_data)[_bin_probe_position]++;
         uint64_t chunk_span = (uint64_t)chunksize_scan_bin*nx_scan_bin;
-        uint64_t voxel_offset = (_bin_probe_position%chunk_span)*diff_pattern_size + (_kx/fourD_det_bin*n_cam/fourD_det_bin+_ky/fourD_det_bin);
+        uint64_t voxel_offset = (_bin_probe_position%chunk_span)*diff_pattern_size + (_ky/fourD_det_bin*n_cam/fourD_det_bin+_kx/fourD_det_bin);  // ky*n_cam+kx, matching Pacbed/Roi -- see CPP_EVENTEM_BUGS.md #5 (was transposed: kx*n_cam+ky)
         if (p_full_chunk_data_8)
         {
             int chunk_id = (int)(_bin_probe_position/chunk_span);
@@ -201,7 +203,7 @@ protected:
 
         (*p_counts_data)[_bin_probe_position]++;
         uint64_t chunk_span = (uint64_t)chunksize_scan_bin*nx_scan_bin;
-        uint64_t voxel_offset = (_bin_probe_position%chunk_span)*diff_pattern_size + (_kx/fourD_det_bin*n_cam/fourD_det_bin+_ky/fourD_det_bin);
+        uint64_t voxel_offset = (_bin_probe_position%chunk_span)*diff_pattern_size + (_ky/fourD_det_bin*n_cam/fourD_det_bin+_kx/fourD_det_bin);  // ky*n_cam+kx, matching Pacbed/Roi -- see CPP_EVENTEM_BUGS.md #5 (was transposed: kx*n_cam+ky)
         if (p_full_chunk_data_16)
         {
             int chunk_id = (int)(_bin_probe_position/chunk_span);
@@ -223,7 +225,7 @@ protected:
 
         (*p_counts_data)[_bin_probe_position]++;
         uint64_t chunk_span = (uint64_t)chunksize_scan_bin*nx_scan_bin;
-        uint64_t voxel_offset = (_bin_probe_position%chunk_span)*diff_pattern_size + (_kx/fourD_det_bin*n_cam/fourD_det_bin+_ky/fourD_det_bin);
+        uint64_t voxel_offset = (_bin_probe_position%chunk_span)*diff_pattern_size + (_ky/fourD_det_bin*n_cam/fourD_det_bin+_kx/fourD_det_bin);  // ky*n_cam+kx, matching Pacbed/Roi -- see CPP_EVENTEM_BUGS.md #5 (was transposed: kx*n_cam+ky)
         if (p_full_chunk_data_32)
         {
             int chunk_id = (int)(_bin_probe_position/chunk_span);
@@ -235,8 +237,6 @@ protected:
         std::lock_guard<std::mutex> lock(mtx[_id_chunk]);
         (*p_fourDchunk_data_32)[_id_chunk][voxel_offset]++;
     };
-
-    // STILL WANT TO FLIP ABOVE!
 
     inline void pacbed(uint64_t _probe_position, uint16_t _kx, uint16_t _ky, uint16_t _id_image)
     {
@@ -267,7 +267,7 @@ protected:
     inline void roi(uint64_t _probe_position, uint16_t _kx, uint16_t _ky, uint16_t _id_image)
     {
         int _x = _probe_position%nx;
-        int _y = nx - floor(_probe_position/nx);
+        int _y = ny - floor(_probe_position/nx);  // flip by ny, matching Roi::set_roi() -- see CPP_EVENTEM_BUGS.md #3
 
         if (_x >= lower_left[0] && _x < upper_right[0] && _y > lower_left[1] && _y <= upper_right[1])
         {
@@ -289,7 +289,7 @@ protected:
     inline void roi_ToT(uint64_t _probe_position, uint16_t _kx, uint16_t _ky, uint16_t _id_image)
     {
         int _x = _probe_position%nx;
-        int _y = nx - floor(_probe_position/nx);
+        int _y = ny - floor(_probe_position/nx);  // flip by ny, matching Roi::set_roi() -- see CPP_EVENTEM_BUGS.md #3
 
         if (_x >= lower_left[0] && _x < upper_right[0] && _y > lower_left[1] && _y <= upper_right[1])
         {
@@ -314,7 +314,7 @@ protected:
     inline void roi_4D(uint64_t _probe_position, uint16_t _kx, uint16_t _ky, uint16_t _id_image)
     {
         int _x = _probe_position%nx;
-        int _y = nx - floor(_probe_position/nx);
+        int _y = ny - floor(_probe_position/nx);  // flip by ny, matching Roi::set_roi() -- see CPP_EVENTEM_BUGS.md #3
 
         if (_x >= lower_left[0] && _x < upper_right[0] && _y > lower_left[1] && _y <= upper_right[1] )
         {
@@ -330,7 +330,7 @@ protected:
     inline void roi_4D_ToT(uint64_t _probe_position, uint16_t _kx, uint16_t _ky, uint16_t _id_image)
     {
         int _x = _probe_position%nx;
-        int _y = nx - floor(_probe_position/nx);
+        int _y = ny - floor(_probe_position/nx);  // flip by ny, matching Roi::set_roi() -- see CPP_EVENTEM_BUGS.md #3
 
         if (_x >= lower_left[0] && _x < upper_right[0] && _y > lower_left[1] && _y <= upper_right[1] )
         {
@@ -392,9 +392,9 @@ protected:
         size_t size = sizeof(buffer[0]);
         while ((!this->repetitions_reached) && (*p_processor_line!=-1))
         {
-            if (n_buffer_filled < (n_buffer + n_buffer_processed)) 
+            if (n_buffer_filled < (n_buffer + n_buffer_processed))
             {
-                buffer_id = n_buffer_filled % n_buffer; 
+                buffer_id = n_buffer_filled % n_buffer;
                 file.read_data((char *)&(buffer[buffer_id]), size);
                 ++n_buffer_filled;
             }
@@ -410,12 +410,12 @@ protected:
     inline void read_mmap()
     {
         int buffer_id;
-        size_t map_size = mmap_buffer_size * sizeof(event) ; 
+        size_t map_size = mmap_buffer_size * sizeof(event) ;
         while ((!this->repetitions_reached) && (*p_processor_line!=-1))
         {
-            if (n_buffer_filled < (n_buffer + n_buffer_processed)) 
+            if (n_buffer_filled < (n_buffer + n_buffer_processed))
             {
-                buffer_id = n_buffer_filled % n_buffer; 
+                buffer_id = n_buffer_filled % n_buffer;
                 mmap.read_data(mmap_buffer[buffer_id], map_size);
                 ++n_buffer_filled;
             }
@@ -994,7 +994,7 @@ public:
             if (_ky < 0) _ky = 0; else if (_ky >= this->n_cam) _ky = this->n_cam-1;
 
             int _d2 = (_kx - this->x_offset)*(_kx - this->x_offset) + (_ky - this->y_offset)*(_ky - this->y_offset);
-            if (_d2 > this->in_radius_sqr && _d2 <= this->out_radius_sqr)
+            if (_d2 >= this->in_radius_sqr && _d2 <= this->out_radius_sqr)  // inclusive inner radius, see CPP_EVENTEM_BUGS.md #6
             {
                 uint64_t _probe_position = (uint64_t)seed.ry * this->nx + (uint64_t)seed.rx;
                 (*this->p_stem_data)[seed.id_image][_probe_position] += (size_t)n_electrons;

@@ -191,14 +191,21 @@ private:
 
     void parse_event(event *packet)
     {
-        toa = ((((*packet & 0xFFFF) << 14) + ((*packet >> 30) & 0x3FFF)) << 4) + toa_offset;
+        // - ((*packet >> 16) & 0xF): FToA fine-timing correction, matching
+        // parse_event_w_tot() below -- see CPP_EVENTEM_BUGS.md #4 (same fix applied
+        // to Cheetah.hpp's raster-mode parse_event()).
+        toa = ((((*packet & 0xFFFF) << 14) + ((*packet >> 30) & 0x3FFF)) << 4) - ((*packet >> 16) & 0xF) + toa_offset;
         // nxy is a runtime value (not a compile-time power-of-two the compiler
         // could turn into a cheap mask), so this modulo is a real integer
         // division -- computing it once and reusing it (instead of redoing the
         // same division for the array index below) avoids paying that cost
         // twice per event.
         uint64_t _pattern_idx = this->probe_count_chip[chip_id]%this->nxy;
-        if (_pattern_idx < pattern.size()-1)
+        // `< pattern.size()` (not `- 1`): pattern[] is 0-indexed, so the last valid
+        // index is pattern.size()-1 -- the old `-1` here made that last entry
+        // unreachable, silently dropping every hit belonging to the final scan
+        // position of every repetition. See CPP_EVENTEM_BUGS.md #2.
+        if (_pattern_idx < pattern.size())
         {
             pack_44 = (*packet >> 44);
             uint64_t _probe_position = pattern[_pattern_idx];
@@ -263,6 +270,11 @@ private:
                 case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::roi_4D:
                     this->roi_4D(_probe_position,_kx,_ky,this->id_image);
                     break;
+                case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::tcBF:
+                    // Same missing-case bug as Cheetah.hpp's (raster) dispatch -- see
+                    // CPP_EVENTEM_BUGS.md #7.
+                    this->tcBF(_probe_position,_kx,_ky,this->id_image);
+                    break;
                 case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::write_electron:
                     this->write_electron(_probe_position,_kx,_ky,this->id_image);
                     break;
@@ -298,7 +310,11 @@ private:
         toa = ((((*packet & 0xFFFF) << 14) + ((*packet >> 30) & 0x3FFF)) << 4) - ((*packet >> 16) & 0xF) + toa_offset;
         this->tot = ((*packet) >> (16 + 4)) & 0x3ff;
         uint64_t _pattern_idx = this->probe_count_chip[chip_id]%this->nxy;
-        if (_pattern_idx < pattern.size()-1)
+        // `< pattern.size()` (not `- 1`): pattern[] is 0-indexed, so the last valid
+        // index is pattern.size()-1 -- the old `-1` here made that last entry
+        // unreachable, silently dropping every hit belonging to the final scan
+        // position of every repetition. See CPP_EVENTEM_BUGS.md #2.
+        if (_pattern_idx < pattern.size())
         {
             pack_44 = (*packet >> 44);
             uint64_t _probe_position = pattern[_pattern_idx];
@@ -340,6 +356,10 @@ private:
                 case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::roi_4D:
                     // See Cheetah.hpp's identical dispatch for why roi_4D_ToT, not roi_4D.
                     this->roi_4D_ToT(_probe_position,_kx,_ky,this->id_image);
+                    break;
+                case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::tcBF:
+                    // See the identical case above -- CPP_EVENTEM_BUGS.md #7.
+                    this->tcBF(_probe_position,_kx,_ky,this->id_image);
                     break;
                 case TIMEPIX<event, buffer_size, n_buffer>::FunctionType::write_electron:
                     this->write_electron(_probe_position,_kx,_ky,this->id_image);
@@ -478,12 +498,33 @@ private:
         else if (((*packet >> 56) & 0x0F) == 10)  // TDC1 fall
         //OUDS or QD scan engine TDC line setting  6 - end of pixel clock
         {
+            // A "fall" with no matching preceding "rise" for this chip (rise_fall[chip_id]
+            // already false right here, before this line resets it) is a phantom/orphaned
+            // edge -- e.g. the trailing edge of a pulse that began before this acquisition
+            // started recording. Unlike raster mode (Cheetah.hpp), this branch previously had
+            // NO guard at all: ++probe_count_chip[chip_id] ran unconditionally on every fall,
+            // so a single orphaned fall permanently shifts that chip's trigger counter (and
+            // therefore its pattern-file lookup index / scan position) by a constant +1 offset
+            // for the entire rest of the acquisition -- not a rare edge case, since the real
+            // test hardware's own acquisitions have an orphaned fall on all 4 chips right at
+            // acquisition start. Mirrors the same guard already used in raster mode's
+            // process_tdc(); see CPP_EVENTEM_BUGS.md #1 for the full writeup and how this was
+            // found (comparing against an independent from-scratch reference).
+            //
+            // line_number_offset > 0 (a resumed multi-process split worker) is excluded from
+            // the guard for the same reason raster mode excludes it: a worker seeking into the
+            // middle of the file starts with no real header yet for its actual chip_id, so a
+            // real, valid fall belonging to a different chip can get misattributed to chip_id
+            // 0's rise_fall bookkeeping before the next real header corrects it.
+            bool had_valid_rise = rise_fall[chip_id] || (this->line_number_offset > 0);
             rise_fall[chip_id] = false;
+            if (had_valid_rise)
+            {
             fall_t[chip_id] = ((*packet >> 9) & 0x7FFFFFFFF) + tdc_offset;
 
             if ((prev_tdc > fall_t[chip_id] + tdc_overflow_drop) && (this->current_line > 1) && (last_offset_line_tdc != this->current_line)) // tdc drop bigger than half of tdc range --> tdc must have overflowed
             {
-            tdc_offset += 34359738368; 
+            tdc_offset += 34359738368;
             last_offset_line_tdc = this->current_line;
             }
 
@@ -506,6 +547,7 @@ private:
                     this->id_image = most_advanced_line / this->ny;
                     // this->flush_image(this->id_image);
                 }
+            }
             }
 
             // Multi-process file-splitting: this camera never had a stop-early

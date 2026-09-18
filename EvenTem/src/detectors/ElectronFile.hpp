@@ -54,7 +54,10 @@ template <typename event, int buffer_size, int n_buffer>
 class ELECTRON : public TIMEPIX<event, buffer_size, n_buffer>
 { 
 private:
-    BoundedThreadPool *event_parsing_pool = new BoundedThreadPool;
+    // Removed: `BoundedThreadPool *event_parsing_pool = new BoundedThreadPool;`
+    // leaked on every ELECTRON construction and was never actually used (every
+    // push_task()/init() call on it elsewhere in this file was already commented
+    // out) -- see CPP_EVENTEM_BUGS.md's leak entry.
 
     inline void schedule_buffer()
     {

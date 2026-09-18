@@ -90,7 +90,10 @@ class ADVAPIX : public TIMEPIX<event, buffer_size, n_buffer>
 private:
     int dt;
 
-    BoundedThreadPool *event_parsing_pool = new BoundedThreadPool;
+    // Removed: `BoundedThreadPool *event_parsing_pool = new BoundedThreadPool;`
+    // leaked on every ADVAPIX construction and was never actually used (every
+    // push_task()/init() call on it elsewhere in this file was already commented
+    // out) -- see CPP_EVENTEM_BUGS.md's leak entry.
 
     #ifdef PIXET_ENABLED
     unsigned deviceIndex = 0 ;
