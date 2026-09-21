@@ -274,7 +274,16 @@ PYBIND11_MODULE(MODULE_NAME, m) {
         .def_readonly("clustersize_histogram", &Roi::clustersize_histogram)
         .def_readonly("energy_histogram", &Roi::energy_histogram)
         .def_readonly("clustersize_tot_histogram", &Roi::clustersize_tot_histogram)
-        .def_readwrite("tot_mode", &Roi::tot_mode);
+        .def_readwrite("tot_mode", &Roi::tot_mode)
+        .def("find_checkpoints", &Roi::find_checkpoints, py::arg("n_splits"), py::arg("allow_sidecar") = true)
+        .def_readwrite("file_byte_offset", &Roi::file_byte_offset)
+        .def_readwrite("line_number_offset", &Roi::line_number_offset)
+        .def_readwrite("stop_at_line", &Roi::stop_at_line)
+        .def_readwrite("seed_dt", &Roi::seed_dt)
+        .def_readwrite("seed_rise_t", &Roi::seed_rise_t)
+        .def_readwrite("seed_rise_fall", &Roi::seed_rise_fall)
+        .def_readwrite("seed_line_count", &Roi::seed_line_count)
+        .def_readwrite("seed_chip_id", &Roi::seed_chip_id);
 
         py::class_<Var,LiveProcessor>(m, "Var", py::module_local())
         .def(py::init<int>(),py::arg("repetitions"))

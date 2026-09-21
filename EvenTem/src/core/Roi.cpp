@@ -92,6 +92,16 @@ void Roi::run(){
                 file_path,
                 socket
             );
+            // Multi-process file-splitting (see Roi.h) -- defaults (0, 0, -1)
+            // reproduce the exact old whole-file behavior when unset.
+            cam.file_byte_offset = this->file_byte_offset;
+            cam.line_number_offset = this->line_number_offset;
+            cam.stop_at_line = this->stop_at_line;
+            cam.seed_dt = this->seed_dt;
+            cam.seed_rise_t = this->seed_rise_t;
+            cam.seed_rise_fall = this->seed_rise_fall;
+            cam.seed_line_count = this->seed_line_count;
+            cam.seed_chip_id = this->seed_chip_id;
             if (decluster)
             {
                 std::vector<std::vector<int>> *_p_electron_lut = electron_count_lut.empty() ? nullptr : &electron_count_lut;
@@ -676,7 +686,17 @@ void Roi::reset()
     // Initializations
     nxy = nx * ny;
     id_image = 0;
-    fr_total = nxy * rep;
+    // Multi-process file-splitting: fr_total/fr_count_seed must reflect THIS
+    // worker's own absolute slice boundary (stop_at_line/line_number_offset),
+    // exactly mirroring vSTEM::reset()'s identical fix. Without this, a
+    // worker whose slice ends before finish_line (the ROI's own row-
+    // restricted early exit -- see set_roi()) never satisfies either
+    // termination check once the reader stops supplying new lines, and
+    // process_data()'s "while (*processor_line != -1)" loop spins forever.
+    // Both default to the old whole-file values (nxy*rep, 0) when
+    // stop_at_line/line_number_offset are unset.
+    fr_total = (stop_at_line >= 0) ? (int)((size_t)nx * stop_at_line) : nxy * rep;
+    fr_count_seed = (size_t)nx * line_number_offset;
     fr_count = 0;
 
     Roi_diffraction_pattern.assign(n_cam*n_cam, 0);
@@ -762,5 +782,26 @@ void Roi::line_processor(
             *processor_line = -1;
         }
     }
+}
+
+std::vector<std::tuple<uintmax_t, int, uint64_t, std::vector<uint64_t>, std::vector<int>, std::vector<int>, int>> Roi::find_checkpoints(int n_splits, bool allow_sidecar)
+{
+    if (camera != CAMERA::CHEETAH)
+        throw std::runtime_error("Roi.find_checkpoints() is currently only supported for .tpx3 (CHEETAH) files.");
+
+    using namespace CHEETAH_ADDITIONAL;
+    CHEETAH<EVENT, BUFFER_SIZE, N_BUFFER> cam(
+        nx,
+        ny,
+        dt,
+        &b_cumulative,
+        rep,
+        processor_line,
+        preprocessor_line,
+        mode,
+        file_path,
+        socket
+    );
+    return cam.find_line_checkpoints(n_splits, allow_sidecar);
 }
 
