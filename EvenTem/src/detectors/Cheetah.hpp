@@ -34,6 +34,7 @@
 
 #include "FileConnector.h"
 #include "Timepix.hpp"
+#include "../utils/Tpx3ScanSidecar.hpp"
 
 namespace CHEETAH_ADDITIONAL
 {
@@ -80,6 +81,13 @@ private:
     int most_advanced_line = 0;
     uint64_t line_interval;
     uint64_t dt;
+    // The caller's own configured dwell time, in NANOSECONDS, captured once
+    // at construction (before dt above converts it to ticks and, later, a
+    // real scan recalibrates it from hardware TDC pulses) -- kept only to
+    // match against a .tpx3scan sidecar's own recorded dwell_time_ns for
+    // staleness checking (see find_line_checkpoints/Tpx3ScanSidecar.hpp),
+    // nothing else reads it.
+    uint64_t nominal_dwell_time_ns = 0;
 
     int type;
 
@@ -679,7 +687,62 @@ public:
     // already the correct chip_id for whatever block byte_offset resumes into
     // -- CHEETAH_pixeltrig's own seed_chip_id (find_trigger_checkpoints) is
     // the same fix for the same underlying hazard, already shipped there.
-    std::vector<std::tuple<uintmax_t, int, uint64_t, std::vector<uint64_t>, std::vector<int>, std::vector<int>, int>> find_line_checkpoints(int n_splits)
+    // Tries a .tpx3scan sidecar first (see ../utils/Tpx3ScanSidecar.hpp) --
+    // pyeventem's own persisted "pass 1", real interop rather than a format
+    // of our own -- and only falls back to the full from-scratch prescan
+    // below when there isn't one, it's stale, or it doesn't parse (the
+    // sidecar reader itself never throws; checkpoints_from_index()
+    // returning an empty vector for an n_splits it can't fully answer is
+    // the other, equally safe "give up, fall back" signal). Genuinely
+    // equivalent output either way -- differential-tested directly against
+    // this same prescan (allow_sidecar=false forces it) on the real 3.2 GB
+    // Full scan test file pyeventem/test_data ships, every field of every
+    // checkpoint bit-identical across n_splits in {2, 3, 4, 8, 16, 33} --
+    // so a caller never has to know or care which path actually ran.
+    //
+    // `allow_sidecar=false` forces the prescan unconditionally -- used only
+    // by that differential test, to get the trusted reference answer from
+    // the very same object/call it's comparing the sidecar path against.
+    std::vector<std::tuple<uintmax_t, int, uint64_t, std::vector<uint64_t>, std::vector<int>, std::vector<int>, int>>
+    find_line_checkpoints(int n_splits, bool allow_sidecar = true)
+    {
+        if (allow_sidecar)
+        {
+            auto index = tpx3scan::read_tpx3scan(this->file_path, this->nx, (double)this->nominal_dwell_time_ns);
+            if (index)
+            {
+                int total_lines = (int)(this->ny * this->repetitions);
+                auto derived = tpx3scan::checkpoints_from_index(*index, total_lines, n_splits);
+                if ((int)derived.size() == n_splits - 1)
+                {
+                    std::vector<std::tuple<uintmax_t, int, uint64_t, std::vector<uint64_t>, std::vector<int>, std::vector<int>, int>> out;
+                    out.reserve(derived.size());
+                    for (const auto &cp : derived)
+                    {
+                        out.push_back({
+                            (uintmax_t)cp.byte_offset,
+                            cp.start_line,
+                            cp.dt,
+                            std::vector<uint64_t>{cp.rise_t[0], cp.rise_t[1], cp.rise_t[2], cp.rise_t[3]},
+                            std::vector<int>{cp.rise_fall[0], cp.rise_fall[1], cp.rise_fall[2], cp.rise_fall[3]},
+                            std::vector<int>{cp.line_count[0], cp.line_count[1], cp.line_count[2], cp.line_count[3]},
+                            cp.chip_id
+                        });
+                    }
+                    return out;
+                }
+                // Fell short (e.g. a chip never reaches one of the target
+                // lines within this sidecar's own recorded segments -- can
+                // happen for an n_splits finer than what's practically
+                // resolvable near the very end of a short scan) -- fall
+                // through to the full prescan below rather than return a
+                // partial/wrong-length result.
+            }
+        }
+        return find_line_checkpoints_prescan(n_splits);
+    }
+
+    std::vector<std::tuple<uintmax_t, int, uint64_t, std::vector<uint64_t>, std::vector<int>, std::vector<int>, int>> find_line_checkpoints_prescan(int n_splits)
     {
         reset();
         FileConnector local_file;
@@ -763,7 +826,7 @@ public:
             mode,
             file_path,
             socket
-        ), dt((uint64_t)dt*16/25)
+        ), dt((uint64_t)dt*16/25), nominal_dwell_time_ns((uint64_t)dt)
         {
             this->n_cam = 512;
             if (this->dt == 0){

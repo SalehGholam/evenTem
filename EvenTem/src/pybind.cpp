@@ -112,7 +112,7 @@ PYBIND11_MODULE(MODULE_NAME, m) {
         .def_readonly("clustersize_histogram", &vSTEM::clustersize_histogram)
         .def_readonly("energy_histogram", &vSTEM::energy_histogram)
         .def_readonly("clustersize_tot_histogram", &vSTEM::clustersize_tot_histogram)
-        .def("find_checkpoints", &vSTEM::find_checkpoints, py::arg("n_splits"))
+        .def("find_checkpoints", &vSTEM::find_checkpoints, py::arg("n_splits"), py::arg("allow_sidecar") = true)
         .def_readwrite("file_byte_offset", &vSTEM::file_byte_offset)
         .def_readwrite("line_number_offset", &vSTEM::line_number_offset)
         .def_readwrite("stop_at_line", &vSTEM::stop_at_line)

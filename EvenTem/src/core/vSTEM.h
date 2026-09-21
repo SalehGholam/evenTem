@@ -100,7 +100,7 @@ public:
     // chips can be 2+ lines ahead of the slowest one, not just 1) found only
     // at higher split counts (N=8/16) -- see its own declaration in
     // Timepix.hpp.
-    std::vector<std::tuple<uintmax_t, int, uint64_t, std::vector<uint64_t>, std::vector<int>, std::vector<int>, int>> find_checkpoints(int n_splits);
+    std::vector<std::tuple<uintmax_t, int, uint64_t, std::vector<uint64_t>, std::vector<int>, std::vector<int>, int>> find_checkpoints(int n_splits, bool allow_sidecar = true);
     uintmax_t file_byte_offset = 0;
     int line_number_offset = 0;
     int stop_at_line = -1;

@@ -764,7 +764,7 @@ void vSTEM::from_atomic(){
     }
 }
 
-std::vector<std::tuple<uintmax_t, int, uint64_t, std::vector<uint64_t>, std::vector<int>, std::vector<int>, int>> vSTEM::find_checkpoints(int n_splits)
+std::vector<std::tuple<uintmax_t, int, uint64_t, std::vector<uint64_t>, std::vector<int>, std::vector<int>, int>> vSTEM::find_checkpoints(int n_splits, bool allow_sidecar)
 {
     if (camera != CAMERA::CHEETAH)
         throw std::runtime_error("vSTEM.find_checkpoints() is currently only supported for .tpx3 (CHEETAH) files.");
@@ -782,7 +782,7 @@ std::vector<std::tuple<uintmax_t, int, uint64_t, std::vector<uint64_t>, std::vec
         file_path,
         socket
     );
-    return cam.find_line_checkpoints(n_splits);
+    return cam.find_line_checkpoints(n_splits, allow_sidecar);
 }
 
 std::vector<std::tuple<uintmax_t, int, std::vector<int>, std::vector<int>, int>> vSTEM::find_checkpoints_pixeltrig(int n_splits)
